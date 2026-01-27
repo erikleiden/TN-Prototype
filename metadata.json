@@ -1,0 +1,5 @@
+{
+  "description": "Interactive Tennessee Stranded Talent Explorer for BGI policy analysis, featuring MSA mapping, Venn diagram visualizations, and recommendation engine.",
+  "requestFramePermissions": [],
+  "name": "App"
+}

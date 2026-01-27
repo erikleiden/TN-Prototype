@@ -1,0 +1,607 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+import { 
+  MapPin, 
+  Briefcase, 
+  Target, 
+  Download, 
+  Users, 
+  GraduationCap, 
+  ArrowRight,
+  ChevronDown,
+  LayoutDashboard,
+  BarChart3,
+  Layers,
+  FileText,
+  TrendingUp,
+  Map as MapIcon
+} from 'lucide-react';
+
+// --- Types ---
+type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
+
+interface DataRow {
+  msa_category: string;
+  NAICS2_NAME: string;
+  n_weighted: number;
+  n_weighted_low_wage: number;
+  n_weighted_underemployed: number;
+  n_weighted_stalled: number;
+  education_level_label: string;
+  soc_2019_5_acs_name: string;
+  age_group: string;
+}
+
+type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'Intersection' | 'All Stranded';
+
+const EDUCATION_ORDER = [
+  'High School or Less',
+  'Some College/Associate',
+  'Bachelor\'s Degree',
+  'Graduate Degree'
+];
+
+const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55+'];
+
+// --- Mock Data Generator ---
+const generateData = (): DataRow[] => {
+  const msas: MSACategory[] = ['Nashville', 'Memphis', 'Knoxville', 'Chattanooga', 'Other MSA', 'Rural'];
+  const sectors = ['Manufacturing', 'Retail Trade', 'Health Care and Social Assistance', 'Accommodation and Food Services', 'Construction'];
+  const occupations: Record<string, string[]> = {
+    'Retail Trade': ['Retail Salesperson', 'Cashier', 'First-Line Supervisor', 'Stock Clerk', 'Customer Service Rep'],
+    'Manufacturing': ['Production Worker', 'Machinist', 'Assembler', 'Welder', 'Forklift Operator'],
+    'Health Care and Social Assistance': ['Home Health Aide', 'Medical Assistant', 'Phlebotomist', 'Nursing Assistant'],
+    'Accommodation and Food Services': ['Waiter/Waitress', 'Cook', 'Food Prep Worker', 'Bartender'],
+    'Construction': ['Laborer', 'Carpenter', 'Electrician', 'Plumber']
+  };
+
+  const data: DataRow[] = [];
+  msas.forEach(msa => {
+    sectors.forEach(sector => {
+      EDUCATION_ORDER.forEach(edu => {
+        AGE_GROUPS.forEach(age => {
+          (occupations[sector] || ['General Specialist']).forEach(occ => {
+            const total = Math.floor(Math.random() * 100) + 10;
+            const lw = Math.floor(total * (Math.random() * 0.4 + 0.1));
+            const ue = Math.floor(total * (Math.random() * 0.3 + 0.05));
+            const stalled = Math.floor((lw + ue) * 0.15);
+            
+            data.push({
+              msa_category: msa,
+              NAICS2_NAME: sector,
+              n_weighted: total,
+              n_weighted_low_wage: lw,
+              n_weighted_underemployed: ue,
+              n_weighted_stalled: stalled,
+              education_level_label: edu,
+              soc_2019_5_acs_name: occ,
+              age_group: age
+            });
+          });
+        });
+      });
+    });
+  });
+  return data;
+};
+
+// --- Components ---
+
+const ProgressBar: React.FC<{ label: string, value: number, max: number, colorClass: string }> = ({ label, value, max, colorClass }) => (
+  <div className="space-y-1">
+    <div className="flex justify-between text-[10px] font-bold uppercase tracking-tight text-slate-500">
+      <span className="truncate pr-2">{label}</span>
+      <span className="tabular-nums">{value.toLocaleString()}</span>
+    </div>
+    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div 
+        className={`h-full transition-all duration-1000 ${colorClass}`}
+        style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }}
+      />
+    </div>
+  </div>
+);
+
+const App = () => {
+  const [geography, setGeography] = useState<MSACategory>('Chattanooga');
+  const [sector, setSector] = useState<string>('Manufacturing');
+  const [selectedCohort, setSelectedCohort] = useState<CohortType>('All Stranded');
+  const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
+  const [expandedRec, setExpandedRec] = useState<number | null>(0);
+
+  const rawData = useMemo(() => generateData(), []);
+  const sectors = useMemo(() => Array.from(new Set(rawData.map(d => d.NAICS2_NAME))), [rawData]);
+
+  const filteredByScope = useMemo(() => 
+    rawData.filter(d => (geography === 'All' || d.msa_category === geography) && d.NAICS2_NAME === sector),
+  [rawData, geography, sector]);
+
+  const stats = useMemo(() => {
+    let lw = 0, ue = 0, st = 0, total = 0;
+    filteredByScope.forEach(d => {
+      total += d.n_weighted;
+      lw += d.n_weighted_low_wage;
+      ue += d.n_weighted_underemployed;
+      st += d.n_weighted_stalled;
+    });
+    return { total, lw, ue, st };
+  }, [filteredByScope]);
+
+  const cohortBreakdowns = useMemo(() => {
+    const edu: Record<string, number> = {};
+    const age: Record<string, number> = {};
+    const occ: Record<string, number> = {};
+
+    filteredByScope.forEach(d => {
+      let weight = 0;
+      if (selectedCohort === 'Low Wage') weight = d.n_weighted_low_wage;
+      else if (selectedCohort === 'Underemployed') weight = d.n_weighted_underemployed;
+      else if (selectedCohort === 'Stalled') weight = d.n_weighted_stalled;
+      else if (selectedCohort === 'Intersection') weight = Math.min(d.n_weighted_low_wage, d.n_weighted_underemployed);
+      else weight = d.n_weighted_low_wage + d.n_weighted_underemployed + d.n_weighted_stalled;
+
+      edu[d.education_level_label] = (edu[d.education_level_label] || 0) + weight;
+      age[d.age_group] = (age[d.age_group] || 0) + weight;
+      occ[d.soc_2019_5_acs_name] = (occ[d.soc_2019_5_acs_name] || 0) + weight;
+    });
+
+    return { 
+      edu: (Object.entries(edu)) as [string, number][], 
+      age: (Object.entries(age)) as [string, number][], 
+      occ: (Object.entries(occ).sort((a,b) => b[1] - a[1])) as [string, number][] 
+    };
+  }, [filteredByScope, selectedCohort]);
+
+  useEffect(() => {
+    if (cohortBreakdowns.occ.length > 0 && !targetOccupation) {
+      setTargetOccupation(cohortBreakdowns.occ[0][0]);
+    }
+  }, [cohortBreakdowns.occ, targetOccupation]);
+
+  const recommendations = [
+    {
+      title: "Strategy: Non-Degree Credential Alignment",
+      advice: `BGI analysis suggests that for front-line workers like ${targetOccupation}s, non-degree credentials in high-demand technical fields have high rates of success in the ${geography} MSA. Recommend bridge funding for certificate programs with local community colleges.`
+    },
+    {
+      title: "Strategy: Skills-Adjacent Field Transition",
+      advice: `Target 'Skills-Adjacent' roles in Logistics; the current mechanical and operational skills of ${targetOccupation}s transfer with high overlap to higher-paying supervisor or coordination roles within the ${sector} industry.`
+    },
+    {
+      title: "Strategy: Internal Mobility Pathways",
+      advice: `Develop internal labor market ladders for ${targetOccupation}s. Employer-led upskilling programs focusing on advanced tool-usage or management lead to documented wage premiums for ${selectedCohort} populations in Tennessee.`
+    }
+  ];
+
+  const handleExportBrief = () => {
+    const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `
+      <div style="margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">
+          <span>${label}</span>
+          <span>${value.toLocaleString()}</span>
+        </div>
+        <div style="height: 10px; width: 100%; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
+          <div style="height: 100%; width: ${max > 0 ? (value / max) * 100 : 0}%; background: ${color}; border-radius: 4px;"></div>
+        </div>
+      </div>
+    `;
+
+    const maxAge = Math.max(...cohortBreakdowns.age.map(x => x[1]));
+    const maxEdu = Math.max(...cohortBreakdowns.edu.map(x => x[1]));
+    const maxOcc = Math.max(...cohortBreakdowns.occ.map(x => x[1]));
+
+    const reportHtml = `
+      <html>
+        <head>
+          <title>Executive Brief: Stranded Talent Strategy</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
+            body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; }
+            .page { padding: 80px; height: 100vh; box-sizing: border-box; page-break-after: always; position: relative; display: flex; flex-direction: column; }
+            .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 25px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .header h1 { margin: 0; text-transform: uppercase; font-size: 26px; color: #1e3a8a; font-weight: 800; letter-spacing: -0.025em; }
+            .header .meta { text-align: right; font-size: 11px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.6; }
+            h2 { color: #1e3a8a; border-left: 6px solid #f59e0b; padding-left: 15px; text-transform: uppercase; font-size: 16px; margin-top: 40px; margin-bottom: 20px; font-weight: 800; }
+            .grid { display: grid; grid-template-cols: 1fr 1fr; gap: 40px; flex: 1; }
+            .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 25px; border-radius: 16px; text-align: center; }
+            .stat-val { font-size: 34px; font-weight: 800; color: #1e40af; display: block; letter-spacing: -0.05em; }
+            .stat-label { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 5px; }
+            .rec-card { background: #1e3a8a; color: white; padding: 35px; border-radius: 20px; margin-top: 30px; }
+            .rec-card h3 { color: #f59e0b; margin-top: 0; text-transform: uppercase; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; margin-bottom: 12px; }
+            .footer { position: absolute; bottom: 40px; left: 80px; right: 80px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 9px; color: #94a3b8; text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; }
+            @media print { .page { height: 100vh; overflow: hidden; } }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="header">
+              <div>
+                <p style="margin: 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase I: Diagnostic Inventory</p>
+                <h1>Stranded Talent Analysis</h1>
+              </div>
+              <div class="meta">
+                Region: ${geography} MSA<br>
+                Industry: ${sector}<br>
+                Briefing Date: ${new Date().toLocaleDateString()}
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-cols: repeat(4, 1fr); gap: 15px; margin-bottom: 30px;">
+              <div class="stat-box">
+                <span class="stat-label">Total Scope</span>
+                <span class="stat-val">${stats.total.toLocaleString()}</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">Low Wage</span>
+                <span class="stat-val">${stats.lw.toLocaleString()}</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">Underemployed</span>
+                <span class="stat-val">${stats.ue.toLocaleString()}</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">Stalled</span>
+                <span class="stat-val">${stats.st.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div class="grid">
+              <div>
+                <h2>Demographic Profile: ${selectedCohort}</h2>
+                <div style="margin-bottom: 30px;">
+                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 15px; font-weight: 800;">Age Distribution</h3>
+                  ${cohortBreakdowns.age.map(([label, val]) => renderReportBar(label, val, maxAge)).join('')}
+                </div>
+                <div>
+                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 15px; font-weight: 800;">Education Pipeline</h3>
+                  ${cohortBreakdowns.edu.map(([label, val]) => renderReportBar(label, val, maxEdu, '#f59e0b')).join('')}
+                </div>
+              </div>
+              <div>
+                <h2>Occupational Distribution</h2>
+                <p style="font-size: 11px; color: #64748b; margin-bottom: 20px; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
+                ${cohortBreakdowns.occ.slice(0, 10).map(([label, val]) => renderReportBar(label, val, maxOcc, '#10b981')).join('')}
+              </div>
+            </div>
+            <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
+          </div>
+
+          <div class="page">
+            <div class="header">
+              <div>
+                <p style="margin: 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Intervention Roadmap</p>
+                <h1>Strategic Recommendations</h1>
+              </div>
+              <div class="meta">
+                Focus Occupation: ${targetOccupation}<br>
+                Target Cohort: ${selectedCohort}
+              </div>
+            </div>
+
+            <p style="font-size: 14px; line-height: 1.7; color: #334155; margin-bottom: 40px;">
+              The following interventions are optimized for <strong>${targetOccupation}</strong> populations within the <strong>${geography}</strong> MSA. BGI analysis suggests that addressing these barriers for the <strong>${selectedCohort}</strong> cohort offers the most significant regional economic lift.
+            </p>
+
+            ${recommendations.map((r, i) => `
+              <div class="rec-card">
+                <h3>Priority Recommendation 0${i+1}</h3>
+                <p style="font-size: 18px; font-weight: 800; margin: 0; color: #fef3c7;">${r.title}</p>
+                <p style="font-size: 14px; line-height: 1.7; margin-top: 15px; color: #e2e8f0; font-weight: 400;">${r.advice}</p>
+              </div>
+            `).join('')}
+
+            <div style="margin-top: auto; padding-top: 50px;">
+              <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; font-weight: 800; margin-bottom: 15px;">Economic Impact Forecast</h3>
+              <p style="font-size: 12px; color: #64748b; line-height: 1.7;">
+                Successfully moving individuals in this cohort through the recommended pathways is projected to reduce regional labor churn and stabilize middle-skill supply chains across the Tennessee ${sector} sector.
+              </p>
+            </div>
+            <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
+          </div>
+
+          <script>window.print();</script>
+        </body>
+      </html>
+    `;
+    const win = window.open('', '_blank');
+    win?.document.write(reportHtml);
+    win?.document.close();
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-20 font-['Inter']">
+      <nav className="bg-[#1E3A8A] text-white py-6 px-10 shadow-xl sticky top-0 z-50 flex items-center justify-between border-b-4 border-amber-500">
+        <div className="flex items-center gap-5">
+          <div className="p-3 bg-white/10 rounded-2xl shadow-inner backdrop-blur-md">
+            <LayoutDashboard size={28} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black uppercase tracking-tighter">Stranded Talent Interactive</h1>
+            <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Tennessee BGI Policy Dashboard</p>
+          </div>
+        </div>
+        <button 
+          onClick={handleExportBrief}
+          className="flex items-center gap-3 bg-white hover:bg-slate-100 text-blue-950 px-8 py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group"
+        >
+          <Download size={18} className="group-hover:translate-y-0.5 transition-transform" /> Export Executive Brief
+        </button>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-10 py-12 space-y-24">
+        
+        {/* Step 1: Selection */}
+        <section className="space-y-10">
+          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
+            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">01</div>
+            <div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Regional & Sector Scope</h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Baseline Diagnostic Definition</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-12 gap-10">
+            <div className="col-span-12 lg:col-span-7">
+              <div className="bg-white p-10 rounded-[40px] shadow-sm border border-slate-200">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
+                  <MapPin size={12} className="text-blue-500" /> Geography
+                </h4>
+                <div className="relative w-full aspect-[2.4/1]">
+                  <svg viewBox="0 0 1000 400" className="w-full h-full drop-shadow-lg">
+                    <path d="M20,100 L150,100 L150,350 L50,350 L20,320 Z" fill={geography === 'Memphis' ? '#1E3A8A' : '#E2E8F0'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Memphis')} />
+                    <text x="45" y="230" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Memphis' ? '#fff' : '#64748b'}>Memphis</text>
+                    
+                    <path d="M150,100 L280,100 L280,350 L150,350 Z" fill={geography === 'Rural' ? '#1E3A8A' : '#F8FAFC'} className="cursor-pointer transition-all hover:fill-blue-100 border border-slate-200" onClick={() => setGeography('Rural')} />
+                    <text x="180" y="230" className="pointer-events-none text-[10px] font-bold" fill={geography === 'Rural' ? '#fff' : '#94a3b8'}>Rural West</text>
+                    
+                    <path d="M280,100 L480,100 L520,200 L480,350 L280,350 Z" fill={geography === 'Nashville' ? '#1E3A8A' : '#CBD5E1'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Nashville')} />
+                    <text x="340" y="230" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Nashville' ? '#fff' : '#64748b'}>Nashville</text>
+                    
+                    <path d="M520,200 L650,230 L650,350 L480,350 Z" fill={geography === 'Chattanooga' ? '#1E3A8A' : '#94A3B8'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Chattanooga')} />
+                    <text x="525" y="300" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Chattanooga' ? '#fff' : '#64748b'}>Chattanooga</text>
+                    
+                    <path d="M650,100 L950,50 L980,150 L850,350 L650,350 Z" fill={geography === 'Knoxville' ? '#1E3A8A' : '#475569'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Knoxville')} />
+                    <text x="750" y="230" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Knoxville' ? '#fff' : '#cbd5e1'}>Knoxville</text>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div className="col-span-12 lg:col-span-5 flex flex-col justify-center gap-6">
+              <div className="bg-white p-12 rounded-[40px] shadow-sm border border-slate-200">
+                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2">
+                  <Briefcase size={14} className="text-blue-500" /> NAICS Sector
+                </label>
+                <div className="relative">
+                  <select 
+                    value={sector}
+                    onChange={(e) => setSector(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border-2 border-slate-100 rounded-[24px] px-8 py-5 text-sm font-black appearance-none focus:border-blue-500 transition-all outline-none pr-16"
+                  >
+                    {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
+                    <ChevronDown size={24} />
+                  </div>
+                </div>
+                <div className="mt-12 grid grid-cols-2 gap-6">
+                  <div className="p-6 bg-blue-900 rounded-[32px] text-white">
+                    <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Total Workers</p>
+                    <p className="text-3xl font-black">{stats.total.toLocaleString()}</p>
+                  </div>
+                  <div className="p-6 bg-amber-500 rounded-[32px] text-blue-950">
+                    <p className="text-[10px] font-black text-blue-950/40 uppercase tracking-widest mb-2">Stranded Rate</p>
+                    <p className="text-3xl font-black">{((stats.lw / stats.total) * 100).toFixed(0)}%</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Step 2: Landscape */}
+        <section className="space-y-10">
+          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
+            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">02</div>
+            <div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">The Stranded Landscape</h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Cohort Identification & Intersection</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-12 gap-10">
+            <div className="col-span-12 lg:col-span-6 bg-white p-12 rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
+              <div className="relative w-80 h-80">
+                <div 
+                  onClick={() => setSelectedCohort('Low Wage')}
+                  className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 ${
+                    selectedCohort === 'Low Wage' ? 'bg-blue-600/40 border-blue-600 z-20 scale-105 shadow-xl' : 'bg-blue-500/5 border-blue-200 opacity-60'
+                  }`}
+                >
+                  <span className={`text-[11px] font-black uppercase tracking-widest absolute -top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
+                </div>
+                <div 
+                  onClick={() => setSelectedCohort('Underemployed')}
+                  className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 ${
+                    selectedCohort === 'Underemployed' ? 'bg-amber-500/40 border-amber-600 z-20 scale-105 shadow-xl' : 'bg-amber-500/5 border-amber-200 opacity-60'
+                  }`}
+                >
+                  <span className={`text-[11px] font-black uppercase tracking-widest absolute -top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
+                </div>
+                <div 
+                  onClick={() => setSelectedCohort('Stalled')}
+                  className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 ${
+                    selectedCohort === 'Stalled' ? 'bg-emerald-500/40 border-emerald-600 z-20 scale-105 shadow-xl' : 'bg-emerald-500/5 border-emerald-200 opacity-60'
+                  }`}
+                >
+                  <span className={`text-[11px] font-black uppercase tracking-widest absolute -bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
+                </div>
+                <div 
+                  onClick={() => setSelectedCohort('Intersection')}
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-white border-2 border-slate-900 rounded-full flex items-center justify-center text-[11px] font-black text-slate-900 cursor-pointer hover:scale-110 transition-all z-40 shadow-2xl"
+                >
+                  CORE
+                </div>
+              </div>
+            </div>
+            
+            <div className="col-span-12 lg:col-span-6 bg-white p-12 rounded-[40px] shadow-sm border border-slate-200">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-10">Diagnostics: {selectedCohort}</h4>
+              <div className="grid grid-cols-2 gap-12">
+                <div className="space-y-6">
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Users size={14} className="text-blue-500"/> Age Profile</p>
+                  <div className="space-y-5">
+                    {cohortBreakdowns.age.map(([label, val]) => (
+                      <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.age.map(x => x[1]))} colorClass="bg-blue-600" />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-6">
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><GraduationCap size={14} className="text-amber-500"/> Edu Level</p>
+                  <div className="space-y-5">
+                    {cohortBreakdowns.edu.map(([label, val]) => (
+                      <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.edu.map(x => x[1]))} colorClass="bg-amber-500" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-12 pt-10 border-t border-slate-100">
+                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> Top Occupations</p>
+                <div className="space-y-4">
+                  {cohortBreakdowns.occ.slice(0, 4).map(([label, val]) => (
+                    <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.occ.map(x => x[1]))} colorClass="bg-emerald-500" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Step 3: Deep Dive */}
+        <section className="space-y-10">
+          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
+            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">03</div>
+            <div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Occupational Selection</h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Drill-Down to Targeted Intervention Nodes</p>
+            </div>
+          </div>
+          
+          <div className="bg-white p-12 rounded-[40px] shadow-sm border border-slate-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {cohortBreakdowns.occ.slice(0, 10).map(([occ, val]) => (
+                <div 
+                  key={occ} 
+                  onClick={() => setTargetOccupation(occ)}
+                  className={`p-6 rounded-[32px] border-2 cursor-pointer transition-all duration-300 ${
+                    targetOccupation === occ ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300'
+                  }`}
+                >
+                  <p className={`font-black uppercase tracking-tighter text-sm mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
+                  <div className="flex justify-between items-center">
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>Reach</span>
+                    <span className={`text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{val.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Step 4: Roadmap */}
+        <section className="space-y-10">
+          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
+            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">04</div>
+            <div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Policy Roadmap</h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Strategic Interventions for Regional Lift</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-12 gap-10">
+            <div className="col-span-12 lg:col-span-7 space-y-6">
+              {recommendations.map((rec, i) => (
+                <div 
+                  key={i}
+                  onClick={() => setExpandedRec(expandedRec === i ? null : i)}
+                  className={`p-10 rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
+                    expandedRec === i ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className={`text-lg font-black uppercase tracking-tight ${expandedRec === i ? 'text-blue-900' : 'text-slate-500'}`}>{rec.title}</h3>
+                    <ChevronDown className={`transition-transform duration-300 ${expandedRec === i ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
+                  </div>
+                  {expandedRec === i && (
+                    <div className="mt-8 animate-in fade-in slide-in-from-top-4">
+                      <p className="text-slate-600 leading-relaxed font-medium">{rec.advice}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            <div className="col-span-12 lg:col-span-5">
+              <div className="bg-[#1E3A8A] text-white p-12 rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-8 border-amber-500">
+                <div className="relative z-10">
+                  <h3 className="text-2xl font-black leading-tight mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
+                  
+                  <div className="mb-10 space-y-4">
+                    <div className="flex justify-between border-b border-white/10 pb-3">
+                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Region</span>
+                      <span className="font-bold text-sm">{geography}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/10 pb-3">
+                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Sector</span>
+                      <span className="font-bold text-sm truncate max-w-[200px]">{sector}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/10 pb-3">
+                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Occupation</span>
+                      <span className="font-bold text-sm truncate max-w-[200px]">{targetOccupation}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/10 pb-3">
+                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Strandedness</span>
+                      <span className="font-bold text-sm">{selectedCohort}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-10">
+                    <div className="flex items-center gap-8">
+                      <div className="w-16 h-16 rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner">
+                        <TrendingUp size={28} />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-2">Potential Wage Uplift Range</p>
+                        <p className="text-3xl font-black">+18% - 25% Avg.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-8">
+                      <div className="w-16 h-16 rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner">
+                        <Users size={28} />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-2">Total Workers in Pool</p>
+                        <p className="text-3xl font-black">{(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <footer className="max-w-7xl mx-auto px-10 py-16 border-t border-slate-200 text-slate-400 text-[10px] font-black uppercase tracking-widest text-center flex justify-between items-center">
+        <span>BGI Data Analytics © 2025 | Tennessee Strategic Workforce Dashboard</span>
+        <div className="flex gap-10">
+          <a href="#" className="hover:text-blue-600">Methodology</a>
+          <a href="#" className="hover:text-blue-600">Source Data</a>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+const root = createRoot(document.getElementById('root')!);
+root.render(<App />);
