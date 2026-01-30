@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { 
-  MapPin, 
-  Briefcase, 
-  Target, 
-  Download, 
-  Users, 
-  GraduationCap, 
+import {
+  MapPin,
+  Briefcase,
+  Target,
+  Download,
+  Users,
+  GraduationCap,
   ArrowRight,
   ChevronDown,
   LayoutDashboard,
@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Map as MapIcon
 } from 'lucide-react';
+import TennesseeMap from './src/components/TennesseeMap';
 
 // --- Types ---
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
@@ -32,7 +33,7 @@ interface DataRow {
   age_group: string;
 }
 
-type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'Intersection' | 'All Stranded';
+type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'All Stranded';
 
 const EDUCATION_ORDER = [
   'High School or Less',
@@ -137,7 +138,6 @@ const App = () => {
       if (selectedCohort === 'Low Wage') weight = d.n_weighted_low_wage;
       else if (selectedCohort === 'Underemployed') weight = d.n_weighted_underemployed;
       else if (selectedCohort === 'Stalled') weight = d.n_weighted_stalled;
-      else if (selectedCohort === 'Intersection') weight = Math.min(d.n_weighted_low_wage, d.n_weighted_underemployed);
       else weight = d.n_weighted_low_wage + d.n_weighted_underemployed + d.n_weighted_stalled;
 
       edu[d.education_level_label] = (edu[d.education_level_label] || 0) + weight;
@@ -158,6 +158,11 @@ const App = () => {
     }
   }, [cohortBreakdowns.occ, targetOccupation]);
 
+  // Check if "Some College/Associate" is a significant portion of the selected cohort
+  const someCollegeCount = cohortBreakdowns.edu.find(([label]) => label === 'Some College/Associate')?.[1] || 0;
+  const totalEdu = cohortBreakdowns.edu.reduce((sum, [, val]) => sum + val, 0);
+  const includeCollegeCompletion = someCollegeCount / totalEdu > 0.15; // If >15% have some college
+
   const recommendations = [
     {
       title: "Strategy: Non-Degree Credential Alignment",
@@ -170,6 +175,18 @@ const App = () => {
     {
       title: "Strategy: Internal Mobility Pathways",
       advice: `Develop internal labor market ladders for ${targetOccupation}s. Employer-led upskilling programs focusing on advanced tool-usage or management lead to documented wage premiums for ${selectedCohort} populations in Tennessee.`
+    },
+    ...(includeCollegeCompletion ? [{
+      title: "Strategy: College Completion Support",
+      advice: `A significant portion of ${targetOccupation}s in ${geography} have some college but no degree. Implement re-enrollment programs, flexible course scheduling, and credit for prior learning assessments to help workers complete their bachelor's degrees, unlocking career advancement opportunities.`
+    }] : []),
+    {
+      title: "Strategy: Wage-Boosting Skills Training",
+      advice: `Targeted micro-credentialing in high-value skills can boost wages for ${targetOccupation}s. For ${sector} roles, this includes advanced software proficiency (AutoCAD, ERP systems), quality control certifications (Six Sigma, Lean), safety credentials (OSHA 30-hour), and technical communication skills that position workers for supervisory roles.`
+    },
+    {
+      title: "Strategy: Entrepreneurship & Freelance Transition",
+      advice: `For ${targetOccupation}s with established client relationships and specialized skills, transitioning to independent contracting or freelance work can increase earnings by 20-40%. Provide business development training, legal structure guidance (LLC formation), and access to platforms connecting skilled trades with commercial clients.`
     }
   ];
 
@@ -346,24 +363,10 @@ const App = () => {
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
                   <MapPin size={12} className="text-blue-500" /> Geography
                 </h4>
-                <div className="relative w-full aspect-[2.4/1]">
-                  <svg viewBox="0 0 1000 400" className="w-full h-full drop-shadow-lg">
-                    <path d="M20,100 L150,100 L150,350 L50,350 L20,320 Z" fill={geography === 'Memphis' ? '#1E3A8A' : '#E2E8F0'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Memphis')} />
-                    <text x="45" y="230" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Memphis' ? '#fff' : '#64748b'}>Memphis</text>
-                    
-                    <path d="M150,100 L280,100 L280,350 L150,350 Z" fill={geography === 'Rural' ? '#1E3A8A' : '#F8FAFC'} className="cursor-pointer transition-all hover:fill-blue-100 border border-slate-200" onClick={() => setGeography('Rural')} />
-                    <text x="180" y="230" className="pointer-events-none text-[10px] font-bold" fill={geography === 'Rural' ? '#fff' : '#94a3b8'}>Rural West</text>
-                    
-                    <path d="M280,100 L480,100 L520,200 L480,350 L280,350 Z" fill={geography === 'Nashville' ? '#1E3A8A' : '#CBD5E1'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Nashville')} />
-                    <text x="340" y="230" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Nashville' ? '#fff' : '#64748b'}>Nashville</text>
-                    
-                    <path d="M520,200 L650,230 L650,350 L480,350 Z" fill={geography === 'Chattanooga' ? '#1E3A8A' : '#94A3B8'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Chattanooga')} />
-                    <text x="525" y="300" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Chattanooga' ? '#fff' : '#64748b'}>Chattanooga</text>
-                    
-                    <path d="M650,100 L950,50 L980,150 L850,350 L650,350 Z" fill={geography === 'Knoxville' ? '#1E3A8A' : '#475569'} className="cursor-pointer transition-all hover:fill-blue-100" onClick={() => setGeography('Knoxville')} />
-                    <text x="750" y="230" className="pointer-events-none text-[12px] font-black uppercase tracking-tighter" fill={geography === 'Knoxville' ? '#fff' : '#cbd5e1'}>Knoxville</text>
-                  </svg>
-                </div>
+                <TennesseeMap
+                  selectedRegion={geography}
+                  onRegionClick={setGeography}
+                />
               </div>
             </div>
             <div className="col-span-12 lg:col-span-5 flex flex-col justify-center gap-6">
@@ -411,35 +414,32 @@ const App = () => {
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-6 bg-white p-12 rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
               <div className="relative w-80 h-80">
-                <div 
+                <div
                   onClick={() => setSelectedCohort('Low Wage')}
                   className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 ${
                     selectedCohort === 'Low Wage' ? 'bg-blue-600/40 border-blue-600 z-20 scale-105 shadow-xl' : 'bg-blue-500/5 border-blue-200 opacity-60'
                   }`}
                 >
                   <span className={`text-[11px] font-black uppercase tracking-widest absolute -top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
+                  <span className={`text-2xl font-black ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'} absolute top-16 left-8`}>{stats.lw.toLocaleString()}</span>
                 </div>
-                <div 
+                <div
                   onClick={() => setSelectedCohort('Underemployed')}
                   className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 ${
                     selectedCohort === 'Underemployed' ? 'bg-amber-500/40 border-amber-600 z-20 scale-105 shadow-xl' : 'bg-amber-500/5 border-amber-200 opacity-60'
                   }`}
                 >
                   <span className={`text-[11px] font-black uppercase tracking-widest absolute -top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
+                  <span className={`text-2xl font-black ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'} absolute top-16 right-8`}>{stats.ue.toLocaleString()}</span>
                 </div>
-                <div 
+                <div
                   onClick={() => setSelectedCohort('Stalled')}
                   className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 ${
                     selectedCohort === 'Stalled' ? 'bg-emerald-500/40 border-emerald-600 z-20 scale-105 shadow-xl' : 'bg-emerald-500/5 border-emerald-200 opacity-60'
                   }`}
                 >
                   <span className={`text-[11px] font-black uppercase tracking-widest absolute -bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
-                </div>
-                <div 
-                  onClick={() => setSelectedCohort('Intersection')}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-white border-2 border-slate-900 rounded-full flex items-center justify-center text-[11px] font-black text-slate-900 cursor-pointer hover:scale-110 transition-all z-40 shadow-2xl"
-                >
-                  CORE
+                  <span className={`text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-16`}>{stats.st.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -465,7 +465,7 @@ const App = () => {
                 </div>
               </div>
               <div className="mt-12 pt-10 border-t border-slate-100">
-                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> Top Occupations</p>
+                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> Occupations with Most Stranded Workers</p>
                 <div className="space-y-4">
                   {cohortBreakdowns.occ.slice(0, 4).map(([label, val]) => (
                     <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.occ.map(x => x[1]))} colorClass="bg-emerald-500" />
@@ -498,7 +498,9 @@ const App = () => {
                 >
                   <p className={`font-black uppercase tracking-tighter text-sm mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
                   <div className="flex justify-between items-center">
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>Reach</span>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
+                      {selectedCohort === 'All Stranded' ? 'Stranded Workers' : `${selectedCohort} Workers`}
+                    </span>
                     <span className={`text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{val.toLocaleString()}</span>
                   </div>
                 </div>
