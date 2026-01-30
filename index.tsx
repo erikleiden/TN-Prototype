@@ -17,6 +17,7 @@ import {
   Map as MapIcon
 } from 'lucide-react';
 import TennesseeMap from './src/components/TennesseeMap';
+import dashboardData from './src/data/dashboard_summary_data.json';
 
 // --- Types ---
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
@@ -35,55 +36,39 @@ interface DataRow {
 
 type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'All Stranded';
 
+// Map education levels from data to display categories
+const EDUCATION_MAPPING: Record<string, string> = {
+  'Less than HS': 'High School or Less',
+  'HS diploma/GED': 'High School or Less',
+  'Some college': 'Some College/Associate',
+  "Associate's degree": 'Some College/Associate',
+  "Bachelor's degree": "Bachelor's Degree",
+  'Graduate degree': 'Graduate Degree'
+};
+
 const EDUCATION_ORDER = [
   'High School or Less',
   'Some College/Associate',
-  'Bachelor\'s Degree',
+  "Bachelor's Degree",
   'Graduate Degree'
 ];
 
 const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55+'];
 
-// --- Mock Data Generator ---
-const generateData = (): DataRow[] => {
-  const msas: MSACategory[] = ['Nashville', 'Memphis', 'Knoxville', 'Chattanooga', 'Other MSA', 'Rural'];
-  const sectors = ['Manufacturing', 'Retail Trade', 'Health Care and Social Assistance', 'Accommodation and Food Services', 'Construction'];
-  const occupations: Record<string, string[]> = {
-    'Retail Trade': ['Retail Salesperson', 'Cashier', 'First-Line Supervisor', 'Stock Clerk', 'Customer Service Rep'],
-    'Manufacturing': ['Production Worker', 'Machinist', 'Assembler', 'Welder', 'Forklift Operator'],
-    'Health Care and Social Assistance': ['Home Health Aide', 'Medical Assistant', 'Phlebotomist', 'Nursing Assistant'],
-    'Accommodation and Food Services': ['Waiter/Waitress', 'Cook', 'Food Prep Worker', 'Bartender'],
-    'Construction': ['Laborer', 'Carpenter', 'Electrician', 'Plumber']
-  };
-
-  const data: DataRow[] = [];
-  msas.forEach(msa => {
-    sectors.forEach(sector => {
-      EDUCATION_ORDER.forEach(edu => {
-        AGE_GROUPS.forEach(age => {
-          (occupations[sector] || ['General Specialist']).forEach(occ => {
-            const total = Math.floor(Math.random() * 100) + 10;
-            const lw = Math.floor(total * (Math.random() * 0.4 + 0.1));
-            const ue = Math.floor(total * (Math.random() * 0.3 + 0.05));
-            const stalled = Math.floor((lw + ue) * 0.15);
-            
-            data.push({
-              msa_category: msa,
-              NAICS2_NAME: sector,
-              n_weighted: total,
-              n_weighted_low_wage: lw,
-              n_weighted_underemployed: ue,
-              n_weighted_stalled: stalled,
-              education_level_label: edu,
-              soc_2019_5_acs_name: occ,
-              age_group: age
-            });
-          });
-        });
-      });
-    });
-  });
-  return data;
+// --- Load Real Data ---
+const loadData = (): DataRow[] => {
+  // Map the imported data to the expected format
+  return (dashboardData as any[]).map((row: any) => ({
+    msa_category: row.msa_category,
+    NAICS2_NAME: row.NAICS2_NAME || 'Other',
+    n_weighted: row.n_weighted || 0,
+    n_weighted_low_wage: row.n_weighted_low_wage || 0,
+    n_weighted_underemployed: row.n_weighted_underemployed || 0,
+    n_weighted_stalled: row.n_weighted_stalled || 0,
+    education_level_label: EDUCATION_MAPPING[row.education_level_label] || row.education_level_label,
+    soc_2019_5_acs_name: row.soc_2019_5_acs_name || 'Other',
+    age_group: row.age_group
+  }));
 };
 
 // --- Components ---
@@ -104,14 +89,17 @@ const ProgressBar: React.FC<{ label: string, value: number, max: number, colorCl
 );
 
 const App = () => {
-  const [geography, setGeography] = useState<MSACategory>('Chattanooga');
+  const [geography, setGeography] = useState<MSACategory>('Nashville');
   const [sector, setSector] = useState<string>('Manufacturing');
   const [selectedCohort, setSelectedCohort] = useState<CohortType>('All Stranded');
   const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
   const [expandedRec, setExpandedRec] = useState<number | null>(0);
 
-  const rawData = useMemo(() => generateData(), []);
-  const sectors = useMemo(() => Array.from(new Set(rawData.map(d => d.NAICS2_NAME))), [rawData]);
+  const rawData = useMemo(() => loadData(), []);
+  const sectors = useMemo(() => {
+    const allSectors = Array.from(new Set(rawData.map(d => d.NAICS2_NAME).filter(s => s && s !== 'Other' && s !== 'NA')));
+    return allSectors.sort();
+  }, [rawData]);
 
   const filteredByScope = useMemo(() => 
     rawData.filter(d => (geography === 'All' || d.msa_category === geography) && d.NAICS2_NAME === sector),
