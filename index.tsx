@@ -46,7 +46,7 @@ const EDUCATION_ORDER = [
   'Graduate degree'
 ];
 
-const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55+'];
+const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
 
 // --- Load Real Data ---
 const loadData = (): DataRow[] => {
@@ -139,37 +139,132 @@ const App = () => {
     }
   }, [cohortBreakdowns.occ, targetOccupation]);
 
-  // Check if "Some college" is a significant portion of the selected cohort
-  const someCollegeCount = cohortBreakdowns.edu.find(([label]) => label === 'Some college')?.[1] || 0;
-  const totalEdu = cohortBreakdowns.edu.reduce((sum, [, val]) => sum + val, 0);
-  const includeCollegeCompletion = someCollegeCount / totalEdu > 0.15; // If >15% have some college
+  // Analyze cohort characteristics for dynamic recommendations
+  const totalCohort = cohortBreakdowns.edu.reduce((sum, [, val]) => sum + val, 0);
 
-  const recommendations = [
-    {
-      title: "Strategy: Non-Degree Credential Alignment",
-      advice: `BGI analysis suggests that for front-line workers like ${targetOccupation}s, non-degree credentials in high-demand technical fields have high rates of success in the ${geography} MSA. Recommend bridge funding for certificate programs with local community colleges.`
-    },
-    {
-      title: "Strategy: Skills-Adjacent Field Transition",
-      advice: `Target 'Skills-Adjacent' roles in Logistics; the current mechanical and operational skills of ${targetOccupation}s transfer with high overlap to higher-paying supervisor or coordination roles within the ${sector} industry.`
-    },
-    {
-      title: "Strategy: Internal Mobility Pathways",
-      advice: `Develop internal labor market ladders for ${targetOccupation}s. Employer-led upskilling programs focusing on advanced tool-usage or management lead to documented wage premiums for ${selectedCohort} populations in Tennessee.`
-    },
-    ...(includeCollegeCompletion ? [{
-      title: "Strategy: College Completion Support",
-      advice: `A significant portion of ${targetOccupation}s in ${geography} have some college but no degree. Implement re-enrollment programs, flexible course scheduling, and credit for prior learning assessments to help workers complete their bachelor's degrees, unlocking career advancement opportunities.`
-    }] : []),
-    {
-      title: "Strategy: Wage-Boosting Skills Training",
-      advice: `Targeted micro-credentialing in high-value skills can boost wages for ${targetOccupation}s. For ${sector} roles, this includes advanced software proficiency (AutoCAD, ERP systems), quality control certifications (Six Sigma, Lean), safety credentials (OSHA 30-hour), and technical communication skills that position workers for supervisory roles.`
-    },
-    {
-      title: "Strategy: Entrepreneurship & Freelance Transition",
-      advice: `For ${targetOccupation}s with established client relationships and specialized skills, transitioning to independent contracting or freelance work can increase earnings by 20-40%. Provide business development training, legal structure guidance (LLC formation), and access to platforms connecting skilled trades with commercial clients.`
-    }
-  ];
+  // Age analysis
+  const youngCount = cohortBreakdowns.age.filter(([label]) => label === '18-24' || label === '25-34').reduce((sum, [, val]) => sum + val, 0);
+  const matureCount = cohortBreakdowns.age.filter(([label]) => label === '45-54' || label === '55-64').reduce((sum, [, val]) => sum + val, 0);
+  const isYoungCohort = youngCount / totalCohort > 0.5;
+  const isMatureCohort = matureCount / totalCohort > 0.5;
+
+  // Education analysis
+  const lowEduCount = cohortBreakdowns.edu.filter(([label]) => label === 'Less than HS' || label === 'HS diploma/GED').reduce((sum, [, val]) => sum + val, 0);
+  const highEduCount = cohortBreakdowns.edu.filter(([label]) => label === "Bachelor's degree" || label === 'Graduate degree').reduce((sum, [, val]) => sum + val, 0);
+  const someCollegeCount = cohortBreakdowns.edu.find(([label]) => label === 'Some college')?.[1] || 0;
+  const isLowEducation = lowEduCount / totalCohort > 0.6;
+  const isHighEducation = highEduCount / totalCohort > 0.4;
+  const hasSomeCollege = someCollegeCount / totalCohort > 0.15;
+
+  // Sector-specific characteristics
+  const isManufacturing = sector.includes('Manufacturing');
+  const isHealthcare = sector.includes('Health');
+  const isRetail = sector.includes('Retail') || sector.includes('Food');
+  const isConstruction = sector.includes('Construction');
+  const isProfessional = sector.includes('Professional') || sector.includes('Finance') || sector.includes('Information');
+  const isEducation = sector.includes('Educational');
+
+  // Build dynamic recommendations based on cohort profile
+  const recommendations: { title: string; advice: string }[] = [];
+
+  // Recommendation 1: Age-appropriate entry strategy
+  if (isYoungCohort) {
+    recommendations.push({
+      title: "Strategy: Youth Apprenticeship & Pre-Apprenticeship Programs",
+      advice: `With over half of ${targetOccupation}s in ${geography === 'All' ? 'Tennessee' : geography} under age 35, registered apprenticeship programs offer a proven pathway. Partner with ${sector} employers to create earn-while-you-learn pathways that combine on-the-job training with classroom instruction. Tennessee Reconnect and Drive to 55 initiatives provide tuition support for participants under 25, enabling credential attainment while earning competitive wages.`
+    });
+  } else if (isMatureCohort) {
+    recommendations.push({
+      title: "Strategy: Mid-Career Upskilling & Re-Credentialing",
+      advice: `Many ${targetOccupation}s in this cohort (45+) have extensive work experience but lack formal credentials. Implement Prior Learning Assessment (PLA) programs that award college credit for work experience, combined with accelerated competency-based education to fast-track credential completion. Tennessee Reconnect offers tuition-free community college for adults, making this financially viable.`
+    });
+  } else {
+    recommendations.push({
+      title: "Strategy: Career Advancement Pathways",
+      advice: `Focus on creating clear advancement pathways for mid-career ${targetOccupation}s in ${sector}. Develop stackable credentials that allow workers to incrementally build skills while remaining employed. Partner with employers to create internal promotion pathways that recognize credential attainment with wage increases.`
+    });
+  }
+
+  // Recommendation 2: Education-appropriate intervention
+  if (isLowEducation) {
+    recommendations.push({
+      title: "Strategy: Foundational Skills & Industry-Recognized Credentials",
+      advice: `With ${Math.round(lowEduCount / totalCohort * 100)}% of ${targetOccupation}s having a high school diploma or less, prioritize short-term, industry-recognized credentials that lead directly to employment. Focus on OSHA certifications, forklift operation, CDL training, and other credentials that have immediate labor market value in ${geography === 'All' ? 'Tennessee' : geography}'s ${sector} sector. Integrate adult basic education for those needing GED completion.`
+    });
+  } else if (isHighEducation) {
+    recommendations.push({
+      title: "Strategy: Advanced Credential Stacking & Management Pathways",
+      advice: `With ${Math.round(highEduCount / totalCohort * 100)}% holding bachelor's degrees or higher, focus on management training, Six Sigma Black Belt certification, and professional certifications (PMP, SHRM-CP) that position ${targetOccupation}s for supervisory roles. For ${selectedCohort} workers with degrees, the barrier is often lack of management experience or industry-specific advanced credentials rather than education.`
+    });
+  } else {
+    recommendations.push({
+      title: "Strategy: Flexible Postsecondary Completion & Certificate Programs",
+      advice: `Support ${targetOccupation}s in completing associate degrees or industry certificates through flexible delivery models (evening, weekend, online). Tennessee Colleges of Applied Technology (TCATs) offer accelerated programs aligned to ${sector} industry needs with job placement rates exceeding 85%. Emphasize stackable credentials that provide immediate wage gains while progressing toward degree completion.`
+    });
+  }
+
+  // Recommendation 3: Sector-specific intervention
+  if (isManufacturing) {
+    recommendations.push({
+      title: "Strategy: Advanced Manufacturing Skills & Automation Training",
+      advice: `Tennessee's ${geography === 'All' ? 'statewide' : geography} manufacturing sector increasingly requires CNC machining, robotics maintenance, and industrial automation skills. Target ${targetOccupation}s for training in FANUC robotics certification, Siemens mechatronics, and Industry 4.0 competencies. Partner with manufacturers to create cohort-based training that guarantees job placement upon completion with $5-8/hour wage premiums.`
+    });
+  } else if (isHealthcare) {
+    recommendations.push({
+      title: "Strategy: Healthcare Career Ladders & Clinical Certifications",
+      advice: `Create healthcare career pathways for ${targetOccupation}s moving from entry-level to clinical roles. Support CNA-to-LPN and LPN-to-RN bridge programs, or lateral moves into medical coding, pharmacy tech, or surgical tech roles. Tennessee's healthcare sector projects 15% growth through 2030, with median wages 40% higher than current ${selectedCohort} workers in ${geography === 'All' ? 'the state' : geography}.`
+    });
+  } else if (isRetail) {
+    recommendations.push({
+      title: "Strategy: Digital Commerce & Customer Experience Specialization",
+      advice: `Retail and food service workers have transferable customer service skills valued in many sectors. Support ${targetOccupation}s in transitioning to higher-wage roles in sales operations, e-commerce logistics, customer success management, or hospitality management. Micro-credentials in Salesforce, digital marketing, and supply chain coordination can unlock 30-50% wage increases.`
+    });
+  } else if (isConstruction) {
+    recommendations.push({
+      title: "Strategy: Skilled Trades Credentialing & Supervisory Development",
+      advice: `Construction offers clear pathways from apprentice to journeyman to master craftsperson. Support ${targetOccupation}s in obtaining electrical, plumbing, or HVAC licensure through Tennessee's registered apprenticeship programs. For experienced workers, focus on supervisor/foreman training, OSHA 30-hour, and project management fundamentals that lead to superintendent roles with 50%+ wage premiums.`
+    });
+  } else if (isProfessional) {
+    recommendations.push({
+      title: "Strategy: Technology Upskilling & Professional Certification",
+      advice: `Professional services increasingly require digital literacy and technical specializations. Target ${targetOccupation}s for training in data analytics (SQL, Tableau, Power BI), cloud platforms (AWS, Azure), project management (PMP, Agile), or specialized software relevant to ${sector}. These credentials can unlock remote work opportunities and salary increases of 25-40% in ${geography === 'All' ? 'Tennessee' : geography}.`
+    });
+  } else if (isEducation) {
+    recommendations.push({
+      title: "Strategy: Educational Support Professional Development",
+      advice: `Support ${targetOccupation}s in advancing from paraprofessional to licensed teacher roles through Tennessee's Grow Your Own teacher programs. Alternative licensure pathways and tuition assistance for bachelor's degree completion can transition classroom aides, substitute teachers, and support staff into full teaching positions with median salaries exceeding $52,000 in ${geography === 'All' ? 'Tennessee' : geography}.`
+    });
+  } else {
+    recommendations.push({
+      title: "Strategy: Cross-Sector Skills Transfer & Industry Switching",
+      advice: `Identify transferable skills of ${targetOccupation}s that are valued in higher-wage sectors. For example, operations roles transfer to logistics management, customer service transfers to healthcare patient experience, and administrative skills transfer to professional services. Provide career navigation support to help workers identify viable transitions with minimal retraining.`
+    });
+  }
+
+  // Recommendation 4: College completion (conditional)
+  if (hasSomeCollege) {
+    recommendations.push({
+      title: "Strategy: College Completion & Credit for Prior Learning",
+      advice: `${Math.round(someCollegeCount / totalCohort * 100)}% of ${targetOccupation}s in ${geography === 'All' ? 'Tennessee' : geography} have some college but no degree. Implement Tennessee Reconnect re-enrollment initiatives, reverse transfer programs that award associate degrees for accumulated credits, and Prior Learning Assessment to accelerate completion. Workers with associate degrees earn 20% more than those with some college; bachelor's degrees provide 65% wage premiums.`
+    });
+  }
+
+  // Recommendation 5: Internal mobility pathways (always relevant)
+  recommendations.push({
+    title: "Strategy: Employer-Led Internal Mobility Systems",
+    advice: `Work with ${sector} employers in ${geography === 'All' ? 'Tennessee' : geography} to develop transparent internal career pathways for ${targetOccupation}s. Implement skills-based progression frameworks where workers can advance through documented skill attainment rather than degree requirements. Successful models include tuition assistance (up to $5,250/year tax-free), paid time for training, and guaranteed wage increases upon credential completion.`
+  });
+
+  // Recommendation 6: Entrepreneurship (for specific occupations)
+  const entrepreneurshipOccupations = ['Carpenters', 'Electricians', 'Plumbers', 'HVAC', 'Hair', 'Cosmetologists', 'Photographers', 'Designers', 'Drivers', 'Mechanics', 'Repair'];
+  const isEntrepreneurshipViable = entrepreneurshipOccupations.some(occ => (targetOccupation || '').includes(occ));
+
+  if (isEntrepreneurshipViable) {
+    recommendations.push({
+      title: "Strategy: Self-Employment & Microbusiness Development",
+      advice: `Many ${targetOccupation}s have skills suited for independent contracting or small business ownership. Provide access to Tennessee Small Business Development Centers (TSBDC) for business planning, SCORE mentoring, and microfinance through community lenders. Self-employed skilled workers in ${sector} can earn 20-50% more than W-2 employees, with greater schedule flexibility. Support LLC formation, insurance procurement, and digital marketing training.`
+    });
+  }
 
   const handleExportBrief = () => {
     const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `

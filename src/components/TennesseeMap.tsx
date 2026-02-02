@@ -55,6 +55,11 @@ const TennesseeMap: React.FC<TennesseeMapProps> = ({ selectedRegion, onRegionCli
 
   // Get region fill color with more diverse palette
   const getRegionColor = (region: MSACategory, isSelected: boolean, isHovered: boolean): string => {
+    // If "All Tennessee" is selected, show all regions in a unified color
+    if (selectedRegion === 'All') {
+      return '#1E3A8A'; // Navy blue for all regions when "All" is selected
+    }
+
     if (isSelected) return '#1E3A8A'; // Navy blue for selected
     if (isHovered) return '#93C5FD'; // Light blue for hover
 
