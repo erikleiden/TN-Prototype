@@ -94,9 +94,9 @@ const TennesseeMap: React.FC<TennesseeMapProps> = ({ selectedRegion, onRegionCli
       </div>
 
       {/* Map and Legend Container */}
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-6">
         {/* Legend - Left Side */}
-        <div className="flex flex-col gap-2 min-w-[140px]">
+        <div className="flex flex-row md:flex-col gap-2 flex-wrap md:min-w-[140px]">
           {/* All Tennessee Option */}
           <button
             onClick={() => onRegionClick('All' as MSACategory)}

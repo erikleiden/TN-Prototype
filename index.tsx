@@ -524,39 +524,39 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-20 font-['Inter']">
-      <nav className="bg-[#1E3A8A] text-white py-6 px-10 shadow-xl sticky top-0 z-50 flex items-center justify-between border-b-4 border-amber-500">
-        <div className="flex items-center gap-5">
-          <div className="p-3 bg-white/10 rounded-2xl shadow-inner backdrop-blur-md">
-            <LayoutDashboard size={28} />
+      <nav className="bg-[#1E3A8A] text-white py-4 px-4 md:py-6 md:px-10 shadow-xl sticky top-0 z-50 flex flex-col md:flex-row items-start md:items-center justify-between border-b-4 border-amber-500 gap-4 md:gap-0">
+        <div className="flex items-center gap-3 md:gap-5">
+          <div className="p-2 md:p-3 bg-white/10 rounded-2xl shadow-inner backdrop-blur-md">
+            <LayoutDashboard size={24} className="md:w-7 md:h-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter">Stranded Talent Interactive</h1>
-            <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Tennessee BGI Policy Dashboard</p>
+            <h1 className="text-lg md:text-2xl font-black uppercase tracking-tighter">Stranded Talent Interactive</h1>
+            <p className="text-[9px] md:text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Tennessee BGI Policy Dashboard</p>
           </div>
         </div>
-        <button 
+        <button
           onClick={handleExportBrief}
-          className="flex items-center gap-3 bg-white hover:bg-slate-100 text-blue-950 px-8 py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group"
+          className="flex items-center gap-2 md:gap-3 bg-white hover:bg-slate-100 text-blue-950 px-4 py-2 md:px-8 md:py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group w-full md:w-auto justify-center"
         >
-          <Download size={18} className="group-hover:translate-y-0.5 transition-transform" /> Export Executive Brief
+          <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:translate-y-0.5 transition-transform" /> <span className="hidden sm:inline">Export Executive Brief</span><span className="sm:hidden">Export Brief</span>
         </button>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-10 py-12 space-y-24">
+      <main className="max-w-7xl mx-auto px-4 md:px-10 py-8 md:py-12 space-y-12 md:space-y-24">
         
         {/* Step 1: Selection */}
-        <section className="space-y-10">
-          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
-            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">01</div>
+        <section className="space-y-6 md:space-y-10">
+          <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">01</div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Regional & Sector Scope</h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Baseline Diagnostic Definition</p>
+              <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Regional & Sector Scope</h2>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Baseline Diagnostic Definition</p>
             </div>
           </div>
           
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-7">
-              <div className="bg-white p-10 rounded-[40px] shadow-sm border border-slate-200">
+              <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
                   <MapPin size={12} className="text-blue-500" /> Geography
                 </h4>
@@ -567,7 +567,7 @@ const App = () => {
               </div>
             </div>
             <div className="col-span-12 lg:col-span-5 flex flex-col justify-center gap-6">
-              <div className="bg-white p-12 rounded-[40px] shadow-sm border border-slate-200">
+              <div className="bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
                 <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2">
                   <Briefcase size={14} className="text-blue-500" /> NAICS Sector
                 </label>
@@ -583,14 +583,14 @@ const App = () => {
                     <ChevronDown size={24} />
                   </div>
                 </div>
-                <div className="mt-12 grid grid-cols-2 gap-6">
-                  <div className="p-6 bg-blue-900 rounded-[32px] text-white">
+                <div className="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                  <div className="p-5 md:p-6 bg-blue-900 rounded-[24px] md:rounded-[32px] text-white">
                     <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Total Workers</p>
-                    <p className="text-3xl font-black">{stats.total.toLocaleString()}</p>
+                    <p className="text-2xl md:text-3xl font-black">{stats.total.toLocaleString()}</p>
                   </div>
-                  <div className="p-6 bg-amber-500 rounded-[32px] text-blue-950">
+                  <div className="p-5 md:p-6 bg-amber-500 rounded-[24px] md:rounded-[32px] text-blue-950">
                     <p className="text-[10px] font-black text-blue-950/40 uppercase tracking-widest mb-2">Stranded Rate</p>
-                    <p className="text-3xl font-black">{((stats.lw / stats.total) * 100).toFixed(0)}%</p>
+                    <p className="text-2xl md:text-3xl font-black">{((stats.lw / stats.total) * 100).toFixed(0)}%</p>
                   </div>
                 </div>
               </div>
@@ -599,51 +599,51 @@ const App = () => {
         </section>
 
         {/* Step 2: Landscape */}
-        <section className="space-y-10">
-          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
-            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">02</div>
+        <section className="space-y-6 md:space-y-10">
+          <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">02</div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">The Stranded Landscape</h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Cohort Identification & Intersection</p>
+              <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">The Stranded Landscape</h2>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Cohort Identification & Intersection</p>
             </div>
           </div>
           
           <div className="grid grid-cols-12 gap-10">
-            <div className="col-span-12 lg:col-span-6 bg-white p-12 rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
-              <div className="relative w-80 h-80">
+            <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
+              <div className="relative w-64 h-64 sm:w-80 sm:h-80">
                 <div
                   onClick={() => setSelectedCohort('Low Wage')}
-                  className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 ${
+                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 ${
                     selectedCohort === 'Low Wage' ? 'bg-blue-600/40 border-blue-600 z-20 scale-105 shadow-xl' : 'bg-blue-500/5 border-blue-200 opacity-60'
                   }`}
                 >
-                  <span className={`text-[11px] font-black uppercase tracking-widest absolute -top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
-                  <span className={`text-2xl font-black ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'} absolute top-16 left-8`}>{stats.lw.toLocaleString()}</span>
+                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
+                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'} absolute top-12 sm:top-16 left-6 sm:left-8`}>{stats.lw.toLocaleString()}</span>
                 </div>
                 <div
                   onClick={() => setSelectedCohort('Underemployed')}
-                  className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 ${
+                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 ${
                     selectedCohort === 'Underemployed' ? 'bg-amber-500/40 border-amber-600 z-20 scale-105 shadow-xl' : 'bg-amber-500/5 border-amber-200 opacity-60'
                   }`}
                 >
-                  <span className={`text-[11px] font-black uppercase tracking-widest absolute -top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
-                  <span className={`text-2xl font-black ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'} absolute top-16 right-8`}>{stats.ue.toLocaleString()}</span>
+                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
+                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'} absolute top-12 sm:top-16 right-6 sm:right-8`}>{stats.ue.toLocaleString()}</span>
                 </div>
                 <div
                   onClick={() => setSelectedCohort('Stalled')}
-                  className={`absolute w-52 h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 ${
+                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 ${
                     selectedCohort === 'Stalled' ? 'bg-emerald-500/40 border-emerald-600 z-20 scale-105 shadow-xl' : 'bg-emerald-500/5 border-emerald-200 opacity-60'
                   }`}
                 >
-                  <span className={`text-[11px] font-black uppercase tracking-widest absolute -bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
-                  <span className={`text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-16`}>{stats.st.toLocaleString()}</span>
+                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -bottom-6 sm:-bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
+                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{stats.st.toLocaleString()}</span>
                 </div>
               </div>
             </div>
             
-            <div className="col-span-12 lg:col-span-6 bg-white p-12 rounded-[40px] shadow-sm border border-slate-200">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-10">Diagnostics: {selectedCohort}</h4>
-              <div className="grid grid-cols-2 gap-12">
+            <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
                 <div className="space-y-6">
                   <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Users size={14} className="text-blue-500"/> Age Profile</p>
                   <div className="space-y-5">
@@ -661,8 +661,8 @@ const App = () => {
                   </div>
                 </div>
               </div>
-              <div className="mt-12 pt-10 border-t border-slate-100">
-                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> Occupations with Most Stranded Workers</p>
+              <div className="mt-8 md:mt-12 pt-8 md:pt-10 border-t border-slate-100">
+                <p className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> <span className="hidden sm:inline">Occupations with Most Stranded Workers</span><span className="sm:hidden">Top Occupations</span></p>
                 <div className="space-y-4">
                   {cohortBreakdowns.occ.slice(0, 4).map(([label, val]) => (
                     <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.occ.map(x => x[1]))} colorClass="bg-emerald-500" />
@@ -674,31 +674,31 @@ const App = () => {
         </section>
 
         {/* Step 3: Deep Dive */}
-        <section className="space-y-10">
-          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
-            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">03</div>
+        <section className="space-y-6 md:space-y-10">
+          <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">03</div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Occupational Selection</h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Drill-Down to Targeted Intervention Nodes</p>
+              <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Occupational Selection</h2>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Drill-Down to Targeted Intervention Nodes</p>
             </div>
           </div>
           
-          <div className="bg-white p-12 rounded-[40px] shadow-sm border border-slate-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          <div className="bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
               {cohortBreakdowns.occ.slice(0, 10).map(([occ, val]) => (
-                <div 
-                  key={occ} 
+                <div
+                  key={occ}
                   onClick={() => setTargetOccupation(occ)}
-                  className={`p-6 rounded-[32px] border-2 cursor-pointer transition-all duration-300 ${
+                  className={`p-5 md:p-6 rounded-[24px] md:rounded-[32px] border-2 cursor-pointer transition-all duration-300 ${
                     targetOccupation === occ ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300'
                   }`}
                 >
-                  <p className={`font-black uppercase tracking-tighter text-sm mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
+                  <p className={`font-black uppercase tracking-tighter text-xs md:text-sm mb-3 md:mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
                   <div className="flex justify-between items-center">
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
+                    <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
                       {selectedCohort === 'All Stranded' ? 'Stranded Workers' : `${selectedCohort} Workers`}
                     </span>
-                    <span className={`text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{val.toLocaleString()}</span>
+                    <span className={`text-base md:text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{val.toLocaleString()}</span>
                   </div>
                 </div>
               ))}
@@ -707,32 +707,32 @@ const App = () => {
         </section>
 
         {/* Step 4: Roadmap */}
-        <section className="space-y-10">
-          <div className="flex items-center gap-4 border-b-2 border-slate-200 pb-6">
-            <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm shadow-inner">04</div>
+        <section className="space-y-6 md:space-y-10">
+          <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">04</div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Policy Roadmap</h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Strategic Interventions for Regional Lift</p>
+              <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Policy Roadmap</h2>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Strategic Interventions for Regional Lift</p>
             </div>
           </div>
           
           <div className="grid grid-cols-12 gap-10">
-            <div className="col-span-12 lg:col-span-7 space-y-6">
+            <div className="col-span-12 lg:col-span-7 space-y-4 md:space-y-6">
               {recommendations.map((rec, i) => (
-                <div 
+                <div
                   key={i}
                   onClick={() => setExpandedRec(expandedRec === i ? null : i)}
-                  className={`p-10 rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
+                  className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
                     expandedRec === i ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h3 className={`text-lg font-black uppercase tracking-tight ${expandedRec === i ? 'text-blue-900' : 'text-slate-500'}`}>{rec.title}</h3>
-                    <ChevronDown className={`transition-transform duration-300 ${expandedRec === i ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className={`text-sm md:text-lg font-black uppercase tracking-tight ${expandedRec === i ? 'text-blue-900' : 'text-slate-500'}`}>{rec.title}</h3>
+                    <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === i ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
                   {expandedRec === i && (
-                    <div className="mt-8 animate-in fade-in slide-in-from-top-4">
-                      <p className="text-slate-600 leading-relaxed font-medium">{rec.advice}</p>
+                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                      <p className="text-sm md:text-base text-slate-600 leading-relaxed font-medium">{rec.advice}</p>
                     </div>
                   )}
                 </div>
@@ -740,46 +740,46 @@ const App = () => {
             </div>
             
             <div className="col-span-12 lg:col-span-5">
-              <div className="bg-[#1E3A8A] text-white p-12 rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-8 border-amber-500">
+              <div className="bg-[#1E3A8A] text-white p-6 md:p-12 rounded-[32px] md:rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-4 md:border-t-8 border-amber-500">
                 <div className="relative z-10">
-                  <h3 className="text-2xl font-black leading-tight mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
+                  <h3 className="text-xl md:text-2xl font-black leading-tight mb-6 md:mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
                   
-                  <div className="mb-10 space-y-4">
-                    <div className="flex justify-between border-b border-white/10 pb-3">
-                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Region</span>
-                      <span className="font-bold text-sm">{geography}</span>
+                  <div className="mb-6 md:mb-10 space-y-3 md:space-y-4">
+                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Region</span>
+                      <span className="font-bold text-xs md:text-sm">{geography}</span>
                     </div>
-                    <div className="flex justify-between border-b border-white/10 pb-3">
-                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Sector</span>
-                      <span className="font-bold text-sm truncate max-w-[200px]">{sector}</span>
+                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Sector</span>
+                      <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{sector}</span>
                     </div>
-                    <div className="flex justify-between border-b border-white/10 pb-3">
-                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Occupation</span>
-                      <span className="font-bold text-sm truncate max-w-[200px]">{targetOccupation}</span>
+                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Occupation</span>
+                      <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{targetOccupation}</span>
                     </div>
-                    <div className="flex justify-between border-b border-white/10 pb-3">
-                      <span className="text-blue-300 text-[10px] uppercase font-bold tracking-widest">Strandedness</span>
-                      <span className="font-bold text-sm">{selectedCohort}</span>
+                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Strandedness</span>
+                      <span className="font-bold text-xs md:text-sm">{selectedCohort}</span>
                     </div>
                   </div>
 
-                  <div className="space-y-10">
-                    <div className="flex items-center gap-8">
-                      <div className="w-16 h-16 rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner">
-                        <TrendingUp size={28} />
+                  <div className="space-y-6 md:space-y-10">
+                    <div className="flex items-center gap-4 md:gap-8">
+                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                        <TrendingUp size={24} className="md:w-7 md:h-7" />
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-2">Potential Wage Uplift Range</p>
-                        <p className="text-3xl font-black">+18% - 25% Avg.</p>
+                        <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Potential Wage Uplift Range</p>
+                        <p className="text-2xl md:text-3xl font-black">+18% - 25% Avg.</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-8">
-                      <div className="w-16 h-16 rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner">
-                        <Users size={28} />
+                    <div className="flex items-center gap-4 md:gap-8">
+                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                        <Users size={24} className="md:w-7 md:h-7" />
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-2">Total Workers in Pool</p>
-                        <p className="text-3xl font-black">{(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
+                        <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Total Workers in Pool</p>
+                        <p className="text-2xl md:text-3xl font-black">{(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
                       </div>
                     </div>
                   </div>
@@ -791,9 +791,9 @@ const App = () => {
 
       </main>
 
-      <footer className="max-w-7xl mx-auto px-10 py-16 border-t border-slate-200 text-slate-400 text-[10px] font-black uppercase tracking-widest text-center flex justify-between items-center">
-        <span>BGI Data Analytics © 2025 | Tennessee Strategic Workforce Dashboard</span>
-        <div className="flex gap-10">
+      <footer className="max-w-7xl mx-auto px-4 md:px-10 py-8 md:py-16 border-t border-slate-200 text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center flex flex-col md:flex-row justify-between items-center gap-4 md:gap-0">
+        <span className="text-center md:text-left">BGI Data Analytics © 2025 | Tennessee Strategic Workforce Dashboard</span>
+        <div className="flex gap-6 md:gap-10">
           <a href="#" className="hover:text-blue-600">Methodology</a>
           <a href="#" className="hover:text-blue-600">Source Data</a>
         </div>
