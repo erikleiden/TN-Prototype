@@ -36,21 +36,14 @@ interface DataRow {
 
 type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'All Stranded';
 
-// Map education levels from data to display categories
-const EDUCATION_MAPPING: Record<string, string> = {
-  'Less than HS': 'High School or Less',
-  'HS diploma/GED': 'High School or Less',
-  'Some college': 'Some College/Associate',
-  "Associate's degree": 'Some College/Associate',
-  "Bachelor's degree": "Bachelor's Degree",
-  'Graduate degree': 'Graduate Degree'
-};
-
+// Education levels in increasing order of credential (from the data)
 const EDUCATION_ORDER = [
-  'High School or Less',
-  'Some College/Associate',
-  "Bachelor's Degree",
-  'Graduate Degree'
+  'Less than HS',
+  'HS diploma/GED',
+  'Some college',
+  "Associate's degree",
+  "Bachelor's degree",
+  'Graduate degree'
 ];
 
 const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55+'];
@@ -65,7 +58,7 @@ const loadData = (): DataRow[] => {
     n_weighted_low_wage: row.n_weighted_low_wage || 0,
     n_weighted_underemployed: row.n_weighted_underemployed || 0,
     n_weighted_stalled: row.n_weighted_stalled || 0,
-    education_level_label: EDUCATION_MAPPING[row.education_level_label] || row.education_level_label,
+    education_level_label: row.education_level_label,
     soc_2019_5_acs_name: row.soc_2019_5_acs_name || 'Other',
     age_group: row.age_group
   }));
@@ -89,7 +82,7 @@ const ProgressBar: React.FC<{ label: string, value: number, max: number, colorCl
 );
 
 const App = () => {
-  const [geography, setGeography] = useState<MSACategory>('Nashville');
+  const [geography, setGeography] = useState<MSACategory>('All');
   const [sector, setSector] = useState<string>('Manufacturing');
   const [selectedCohort, setSelectedCohort] = useState<CohortType>('All Stranded');
   const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
@@ -133,10 +126,10 @@ const App = () => {
       occ[d.soc_2019_5_acs_name] = (occ[d.soc_2019_5_acs_name] || 0) + weight;
     });
 
-    return { 
-      edu: (Object.entries(edu)) as [string, number][], 
-      age: (Object.entries(age)) as [string, number][], 
-      occ: (Object.entries(occ).sort((a,b) => b[1] - a[1])) as [string, number][] 
+    return {
+      edu: (Object.entries(edu).sort((a,b) => EDUCATION_ORDER.indexOf(a[0]) - EDUCATION_ORDER.indexOf(b[0]))) as [string, number][],
+      age: (Object.entries(age).sort((a,b) => AGE_GROUPS.indexOf(a[0]) - AGE_GROUPS.indexOf(b[0]))) as [string, number][],
+      occ: (Object.entries(occ).sort((a,b) => b[1] - a[1]).filter(([, val]) => val > 0)) as [string, number][]
     };
   }, [filteredByScope, selectedCohort]);
 
@@ -146,8 +139,8 @@ const App = () => {
     }
   }, [cohortBreakdowns.occ, targetOccupation]);
 
-  // Check if "Some College/Associate" is a significant portion of the selected cohort
-  const someCollegeCount = cohortBreakdowns.edu.find(([label]) => label === 'Some College/Associate')?.[1] || 0;
+  // Check if "Some college" is a significant portion of the selected cohort
+  const someCollegeCount = cohortBreakdowns.edu.find(([label]) => label === 'Some college')?.[1] || 0;
   const totalEdu = cohortBreakdowns.edu.reduce((sum, [, val]) => sum + val, 0);
   const includeCollegeCompletion = someCollegeCount / totalEdu > 0.15; // If >15% have some college
 

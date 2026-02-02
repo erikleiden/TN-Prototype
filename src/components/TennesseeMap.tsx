@@ -83,7 +83,7 @@ const TennesseeMap: React.FC<TennesseeMapProps> = ({ selectedRegion, onRegionCli
             Selected Geography
           </span>
           <span className="text-lg font-black text-slate-900">
-            {selectedRegion === 'All' ? 'All Regions' : selectedRegion}
+            {selectedRegion === 'All' ? 'All Tennessee' : selectedRegion}
           </span>
         </div>
       </div>
@@ -92,6 +92,25 @@ const TennesseeMap: React.FC<TennesseeMapProps> = ({ selectedRegion, onRegionCli
       <div className="flex gap-6">
         {/* Legend - Left Side */}
         <div className="flex flex-col gap-2 min-w-[140px]">
+          {/* All Tennessee Option */}
+          <button
+            onClick={() => onRegionClick('All' as MSACategory)}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              selectedRegion === 'All'
+                ? 'bg-blue-50 border-2 border-blue-900'
+                : 'bg-white border-2 border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div
+              className="w-6 h-6 rounded-md border-2 border-slate-300 shadow-sm flex-shrink-0 bg-gradient-to-br from-slate-100 to-slate-200"
+            />
+            <span className={`text-xs font-bold ${
+              selectedRegion === 'All' ? 'text-blue-900' : 'text-slate-700'
+            }`}>
+              All Tennessee
+            </span>
+          </button>
+
           {regionOrder.map((region) => {
             const isSelected = selectedRegion === region;
             const isHovered = hoveredRegion === region;
