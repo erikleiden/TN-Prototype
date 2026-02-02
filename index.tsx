@@ -268,12 +268,12 @@ const App = () => {
 
   const handleExportBrief = () => {
     const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `
-      <div style="margin-bottom: 12px;">
-        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 6px;">
           <span>${label}</span>
           <span>${value.toLocaleString()}</span>
         </div>
-        <div style="height: 10px; width: 100%; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
+        <div style="height: 8px; width: 100%; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
           <div style="height: 100%; width: ${max > 0 ? (value / max) * 100 : 0}%; background: ${color}; border-radius: 4px;"></div>
         </div>
       </div>
@@ -289,37 +289,156 @@ const App = () => {
           <title>Executive Brief: Stranded Talent Strategy</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
+            * { box-sizing: border-box; }
             body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; }
-            .page { padding: 80px; height: 100vh; box-sizing: border-box; page-break-after: always; position: relative; display: flex; flex-direction: column; }
-            .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 25px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
-            .header h1 { margin: 0; text-transform: uppercase; font-size: 26px; color: #1e3a8a; font-weight: 800; letter-spacing: -0.025em; }
-            .header .meta { text-align: right; font-size: 11px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.6; }
-            h2 { color: #1e3a8a; border-left: 6px solid #f59e0b; padding-left: 15px; text-transform: uppercase; font-size: 16px; margin-top: 40px; margin-bottom: 20px; font-weight: 800; }
-            .grid { display: grid; grid-template-cols: 1fr 1fr; gap: 40px; flex: 1; }
-            .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 25px; border-radius: 16px; text-align: center; }
-            .stat-val { font-size: 34px; font-weight: 800; color: #1e40af; display: block; letter-spacing: -0.05em; }
-            .stat-label { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 5px; }
-            .rec-card { background: #1e3a8a; color: white; padding: 35px; border-radius: 20px; margin-top: 30px; }
-            .rec-card h3 { color: #f59e0b; margin-top: 0; text-transform: uppercase; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; margin-bottom: 12px; }
-            .footer { position: absolute; bottom: 40px; left: 80px; right: 80px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 9px; color: #94a3b8; text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; }
-            @media print { .page { height: 100vh; overflow: hidden; } }
+            .page {
+              padding: 60px 70px 100px 70px;
+              min-height: 100vh;
+              page-break-after: always;
+              position: relative;
+            }
+            .header {
+              border-bottom: 4px solid #1e3a8a;
+              padding-bottom: 20px;
+              margin-bottom: 35px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+            }
+            .header h1 {
+              margin: 0;
+              text-transform: uppercase;
+              font-size: 24px;
+              color: #1e3a8a;
+              font-weight: 800;
+              letter-spacing: -0.025em;
+            }
+            .header .meta {
+              text-align: right;
+              font-size: 10px;
+              color: #64748b;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              line-height: 1.8;
+            }
+            h2 {
+              color: #1e3a8a;
+              border-left: 6px solid #f59e0b;
+              padding-left: 12px;
+              text-transform: uppercase;
+              font-size: 14px;
+              margin-top: 0;
+              margin-bottom: 18px;
+              font-weight: 800;
+            }
+            .stat-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 12px;
+              margin-bottom: 28px;
+            }
+            .stat-box {
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              padding: 20px;
+              border-radius: 12px;
+              text-align: center;
+            }
+            .stat-val {
+              font-size: 28px;
+              font-weight: 800;
+              color: #1e40af;
+              display: block;
+              letter-spacing: -0.05em;
+            }
+            .stat-label {
+              font-size: 9px;
+              font-weight: 800;
+              color: #64748b;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              display: block;
+              margin-bottom: 8px;
+            }
+            .content-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 35px;
+            }
+            .rec-card {
+              background: #1e3a8a;
+              color: white;
+              padding: 28px;
+              border-radius: 16px;
+              margin-bottom: 18px;
+              page-break-inside: avoid;
+            }
+            .rec-card h3 {
+              color: #f59e0b;
+              margin: 0 0 10px 0;
+              text-transform: uppercase;
+              font-size: 11px;
+              font-weight: 800;
+              letter-spacing: 0.1em;
+            }
+            .rec-title {
+              font-size: 16px;
+              font-weight: 800;
+              margin: 0 0 12px 0;
+              color: #fef3c7;
+            }
+            .rec-advice {
+              font-size: 13px;
+              line-height: 1.6;
+              margin: 0;
+              color: #e2e8f0;
+              font-weight: 400;
+            }
+            .footer {
+              position: absolute;
+              bottom: 40px;
+              left: 70px;
+              right: 70px;
+              border-top: 1px solid #e2e8f0;
+              padding-top: 12px;
+              font-size: 8px;
+              color: #94a3b8;
+              text-align: center;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.2em;
+            }
+            .section-divider {
+              margin-top: 35px;
+              margin-bottom: 25px;
+            }
+            @media print {
+              .page {
+                min-height: 100vh;
+                height: auto;
+              }
+              .rec-card {
+                page-break-inside: avoid;
+              }
+            }
           </style>
         </head>
         <body>
           <div class="page">
             <div class="header">
               <div>
-                <p style="margin: 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase I: Diagnostic Inventory</p>
+                <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase I: Diagnostic Inventory</p>
                 <h1>Stranded Talent Analysis</h1>
               </div>
               <div class="meta">
-                Region: ${geography} MSA<br>
+                Region: ${geography === 'All' ? 'All Tennessee' : geography + ' MSA'}<br>
                 Industry: ${sector}<br>
                 Briefing Date: ${new Date().toLocaleDateString()}
               </div>
             </div>
 
-            <div style="display: grid; grid-template-cols: repeat(4, 1fr); gap: 15px; margin-bottom: 30px;">
+            <div class="stat-grid">
               <div class="stat-box">
                 <span class="stat-label">Total Scope</span>
                 <span class="stat-val">${stats.total.toLocaleString()}</span>
@@ -338,31 +457,32 @@ const App = () => {
               </div>
             </div>
 
-            <div class="grid">
+            <div class="content-grid">
               <div>
                 <h2>Demographic Profile: ${selectedCohort}</h2>
-                <div style="margin-bottom: 30px;">
-                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 15px; font-weight: 800;">Age Distribution</h3>
+                <div style="margin-bottom: 32px;">
+                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Age Distribution</h3>
                   ${cohortBreakdowns.age.map(([label, val]) => renderReportBar(label, val, maxAge)).join('')}
                 </div>
                 <div>
-                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 15px; font-weight: 800;">Education Pipeline</h3>
+                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Education Pipeline</h3>
                   ${cohortBreakdowns.edu.map(([label, val]) => renderReportBar(label, val, maxEdu, '#f59e0b')).join('')}
                 </div>
               </div>
               <div>
                 <h2>Occupational Distribution</h2>
-                <p style="font-size: 11px; color: #64748b; margin-bottom: 20px; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
+                <p style="font-size: 11px; color: #64748b; margin: 0 0 18px 0; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
                 ${cohortBreakdowns.occ.slice(0, 10).map(([label, val]) => renderReportBar(label, val, maxOcc, '#10b981')).join('')}
               </div>
             </div>
+
             <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
           </div>
 
           <div class="page">
             <div class="header">
               <div>
-                <p style="margin: 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Intervention Roadmap</p>
+                <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Intervention Roadmap</p>
                 <h1>Strategic Recommendations</h1>
               </div>
               <div class="meta">
@@ -371,24 +491,25 @@ const App = () => {
               </div>
             </div>
 
-            <p style="font-size: 14px; line-height: 1.7; color: #334155; margin-bottom: 40px;">
-              The following interventions are optimized for <strong>${targetOccupation}</strong> populations within the <strong>${geography}</strong> MSA. BGI analysis suggests that addressing these barriers for the <strong>${selectedCohort}</strong> cohort offers the most significant regional economic lift.
+            <p style="font-size: 13px; line-height: 1.6; color: #334155; margin: 0 0 30px 0;">
+              The following interventions are optimized for <strong>${targetOccupation}</strong> populations within <strong>${geography === 'All' ? 'Tennessee' : geography}</strong>. BGI analysis suggests that addressing these barriers for the <strong>${selectedCohort}</strong> cohort offers the most significant regional economic lift.
             </p>
 
             ${recommendations.map((r, i) => `
               <div class="rec-card">
-                <h3>Priority Recommendation 0${i+1}</h3>
-                <p style="font-size: 18px; font-weight: 800; margin: 0; color: #fef3c7;">${r.title}</p>
-                <p style="font-size: 14px; line-height: 1.7; margin-top: 15px; color: #e2e8f0; font-weight: 400;">${r.advice}</p>
+                <h3>Priority Recommendation ${String(i + 1).padStart(2, '0')}</h3>
+                <p class="rec-title">${r.title}</p>
+                <p class="rec-advice">${r.advice}</p>
               </div>
             `).join('')}
 
-            <div style="margin-top: auto; padding-top: 50px;">
-              <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; font-weight: 800; margin-bottom: 15px;">Economic Impact Forecast</h3>
-              <p style="font-size: 12px; color: #64748b; line-height: 1.7;">
+            <div style="margin-top: 28px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
+              <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; font-weight: 800; margin: 0 0 12px 0;">Economic Impact Forecast</h3>
+              <p style="font-size: 12px; color: #64748b; line-height: 1.6; margin: 0;">
                 Successfully moving individuals in this cohort through the recommended pathways is projected to reduce regional labor churn and stabilize middle-skill supply chains across the Tennessee ${sector} sector.
               </p>
             </div>
+
             <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
           </div>
 
