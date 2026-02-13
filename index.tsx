@@ -91,13 +91,34 @@ const ProgressBar: React.FC<{ label: string, value: number, max: number, colorCl
       <span className="tabular-nums">{value.toLocaleString()}</span>
     </div>
     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-      <div 
+      <div
         className={`h-full transition-all duration-1000 ${colorClass}`}
         style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }}
       />
     </div>
   </div>
 );
+
+const Tooltip: React.FC<{ children: React.ReactNode; content: string; title: string }> = ({ children, content, title }) => {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div
+      className="relative inline-block"
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && (
+        <div className="absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 -top-2 left-full ml-4 pointer-events-none">
+          <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">{title}</div>
+          <div className="text-xs leading-relaxed">{content}</div>
+          <div className="absolute top-4 -left-2 w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-r-8 border-r-slate-900"></div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const App = () => {
   const [geography, setGeography] = useState<MSACategory>('All');
@@ -649,33 +670,48 @@ const App = () => {
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
               <div className="relative w-64 h-64 sm:w-80 sm:h-80">
-                <div
-                  onClick={() => setSelectedCohort('Low Wage')}
-                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 ${
-                    selectedCohort === 'Low Wage' ? 'bg-blue-600/40 border-blue-600 z-20 scale-105 shadow-xl' : 'bg-blue-500/5 border-blue-200 opacity-60'
-                  }`}
+                <Tooltip
+                  title="Low Wage Workers"
+                  content="Workers earning annual wages below $30,493 (two-thirds of MIT Living Wage for Tennessee). These workers struggle to meet basic living expenses despite being employed full-time."
                 >
-                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'} absolute top-12 sm:top-16 left-6 sm:left-8`}>{stats.lw.toLocaleString()}</span>
-                </div>
-                <div
-                  onClick={() => setSelectedCohort('Underemployed')}
-                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 ${
-                    selectedCohort === 'Underemployed' ? 'bg-amber-500/40 border-amber-600 z-20 scale-105 shadow-xl' : 'bg-amber-500/5 border-amber-200 opacity-60'
-                  }`}
+                  <div
+                    onClick={() => setSelectedCohort('Low Wage')}
+                    className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 ${
+                      selectedCohort === 'Low Wage' ? 'bg-blue-600/40 border-blue-600 z-20 scale-105 shadow-xl' : 'bg-blue-500/5 border-blue-200 opacity-60'
+                    }`}
+                  >
+                    <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
+                    <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'} absolute top-12 sm:top-16 left-6 sm:left-8`}>{stats.lw.toLocaleString()}</span>
+                  </div>
+                </Tooltip>
+                <Tooltip
+                  title="Underemployed Workers"
+                  content="Workers whose education level exceeds the typical requirements for their occupation by at least 2 levels (for Associate's or below) or 1 level (for Bachelor's or above), AND earn $45,739 or less annually (MIT Living Wage ceiling). These workers have credentials that aren't being fully utilized."
                 >
-                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'} absolute top-12 sm:top-16 right-6 sm:right-8`}>{stats.ue.toLocaleString()}</span>
-                </div>
-                <div
-                  onClick={() => setSelectedCohort('Stalled')}
-                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 ${
-                    selectedCohort === 'Stalled' ? 'bg-emerald-500/40 border-emerald-600 z-20 scale-105 shadow-xl' : 'bg-emerald-500/5 border-emerald-200 opacity-60'
-                  }`}
+                  <div
+                    onClick={() => setSelectedCohort('Underemployed')}
+                    className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 ${
+                      selectedCohort === 'Underemployed' ? 'bg-amber-500/40 border-amber-600 z-20 scale-105 shadow-xl' : 'bg-amber-500/5 border-amber-200 opacity-60'
+                    }`}
+                  >
+                    <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
+                    <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'} absolute top-12 sm:top-16 right-6 sm:right-8`}>{stats.ue.toLocaleString()}</span>
+                  </div>
+                </Tooltip>
+                <Tooltip
+                  title="Stalled Workers"
+                  content="Workers who are either low-wage OR underemployed (or both). This represents the total population of 'stranded' workers who face barriers to economic mobility and career advancement in Tennessee."
                 >
-                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -bottom-6 sm:-bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{stats.st.toLocaleString()}</span>
-                </div>
+                  <div
+                    onClick={() => setSelectedCohort('Stalled')}
+                    className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 ${
+                      selectedCohort === 'Stalled' ? 'bg-emerald-500/40 border-emerald-600 z-20 scale-105 shadow-xl' : 'bg-emerald-500/5 border-emerald-200 opacity-60'
+                    }`}
+                  >
+                    <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -bottom-6 sm:-bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
+                    <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{stats.st.toLocaleString()}</span>
+                  </div>
+                </Tooltip>
               </div>
             </div>
             
