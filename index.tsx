@@ -52,7 +52,7 @@ const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
 // --- Load Real Data ---
 const loadCSVData = async (): Promise<DataRow[]> => {
   try {
-    const response = await fetch('/src/data/cross_tabulated_data_cleaned_correct.csv');
+    const response = await fetch('/cross_tabulated_data_cleaned_correct.csv');
     const csvText = await response.text();
 
     return new Promise((resolve) => {
