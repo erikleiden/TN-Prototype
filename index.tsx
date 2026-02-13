@@ -16,8 +16,8 @@ import {
   TrendingUp,
   Map as MapIcon
 } from 'lucide-react';
+import Papa from 'papaparse';
 import TennesseeMap from './src/components/TennesseeMap';
-import dashboardData from './src/data/dashboard_summary_data.json';
 
 // --- Types ---
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
@@ -49,19 +49,36 @@ const EDUCATION_ORDER = [
 const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
 
 // --- Load Real Data ---
-const loadData = (): DataRow[] => {
-  // Map the imported data to the expected format
-  return (dashboardData as any[]).map((row: any) => ({
-    msa_category: row.msa_category,
-    NAICS2_NAME: row.NAICS2_NAME || 'Other',
-    n_weighted: row.n_weighted || 0,
-    n_weighted_low_wage: row.n_weighted_low_wage || 0,
-    n_weighted_underemployed: row.n_weighted_underemployed || 0,
-    n_weighted_stalled: row.n_weighted_stalled || 0,
-    education_level_label: row.education_level_label,
-    soc_2019_5_acs_name: row.soc_2019_5_acs_name || 'Other',
-    age_group: row.age_group
-  }));
+const loadCSVData = async (): Promise<DataRow[]> => {
+  try {
+    const response = await fetch('/src/data/cross_tabulated_data_cleaned_correct.csv');
+    const csvText = await response.text();
+
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          const mappedData = (results.data as any[]).map((row: any) => ({
+            msa_category: row.msa_category || '',
+            NAICS2_NAME: row.naics2_title || 'Other',
+            n_weighted: Number(row.n_weighted) || 0,
+            n_weighted_low_wage: Number(row.n_low_wage_weighted) || 0,
+            n_weighted_underemployed: Number(row.n_underemployed_weighted) || 0,
+            n_weighted_stalled: Number(row.n_stranded_weighted) || 0,
+            education_level_label: row.education_level_label || 'Unknown',
+            soc_2019_5_acs_name: row.SOC_2019_5_ACS_NAME || 'Other',
+            age_group: row.age_group || ''
+          }));
+          resolve(mappedData);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error loading CSV data:', error);
+    return [];
+  }
 };
 
 // --- Components ---
@@ -87,8 +104,17 @@ const App = () => {
   const [selectedCohort, setSelectedCohort] = useState<CohortType>('All Stranded');
   const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
   const [expandedRec, setExpandedRec] = useState<number | null>(0);
+  const [rawData, setRawData] = useState<DataRow[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const rawData = useMemo(() => loadData(), []);
+  // Load data on mount
+  useEffect(() => {
+    loadCSVData().then(data => {
+      setRawData(data);
+      setIsLoading(false);
+    });
+  }, []);
+
   const sectors = useMemo(() => {
     const allSectors = Array.from(new Set(rawData.map(d => d.NAICS2_NAME).filter(s => s && s !== 'Other' && s !== 'NA')));
     return allSectors.sort();
@@ -521,6 +547,17 @@ const App = () => {
     win?.document.write(reportHtml);
     win?.document.close();
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-blue-900 border-t-transparent"></div>
+          <p className="mt-4 text-slate-600 font-bold">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-20 font-['Inter']">
