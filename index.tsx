@@ -43,7 +43,8 @@ const EDUCATION_ORDER = [
   'Some college',
   "Associate's degree",
   "Bachelor's degree",
-  'Graduate degree'
+  "Master's degree",
+  'Professional/Doctorate'
 ];
 
 const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
