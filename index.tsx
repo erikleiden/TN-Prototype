@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Papa from 'papaparse';
 import TennesseeMap from './src/components/TennesseeMap';
+import pathwaysRaw from './src/data/pathways_data.json';
 
 // --- Types ---
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
@@ -48,6 +49,37 @@ const EDUCATION_ORDER = [
 ];
 
 const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
+
+// --- Pathways Data Types & Helpers ---
+interface PathwayRow {
+  origin: string;
+  destination: string;
+  wage_gain_dollars: number;
+  wage_gain_pct: number;
+  share_5yr: number;
+  similarity: number;
+  diff_strandedness: number;
+}
+
+const pathwaysData = pathwaysRaw as Record<string, Record<string, { transitions: PathwayRow[]; similarity: PathwayRow[]; origin_options: string[] }>>;
+
+const cohortToPathwayKey = (cohort: string): string => {
+  if (cohort === 'Low Wage') return 'low_wage';
+  if (cohort === 'Underemployed') return 'underemployed';
+  return 'stranded';
+};
+
+const geographyToPathwayKey = (geo: string): string => {
+  if (geo === 'Nashville') return 'Nashville';
+  if (geo === 'Memphis') return 'Memphis';
+  if (geo === 'Knoxville') return 'Knoxville';
+  if (geo === 'Chattanooga') return 'Chattanooga';
+  if (geo === 'Other MSA') return 'Other MSA';
+  return 'All Tennessee';
+};
+
+const pluralize = (name: string): string =>
+  name.endsWith('s') ? name : name + 's';
 
 // --- Load Real Data ---
 const loadCSVData = async (): Promise<DataRow[]> => {
@@ -182,10 +214,11 @@ const App = () => {
   }, [filteredByScope, selectedCohort]);
 
   useEffect(() => {
-    if (cohortBreakdowns.occ.length > 0 && !targetOccupation) {
+    if (cohortBreakdowns.occ.length > 0) {
+      // Always reset to top occupation when sector or cohort changes
       setTargetOccupation(cohortBreakdowns.occ[0][0]);
     }
-  }, [cohortBreakdowns.occ, targetOccupation]);
+  }, [sector, selectedCohort, geography]);
 
   // Analyze cohort characteristics for dynamic recommendations
   const totalCohort = cohortBreakdowns.edu.reduce((sum, [, val]) => sum + val, 0);
@@ -219,17 +252,17 @@ const App = () => {
   if (isYoungCohort) {
     recommendations.push({
       title: "Strategy: Youth Apprenticeship & Pre-Apprenticeship Programs",
-      advice: `With over half of ${targetOccupation}s in ${geography === 'All' ? 'Tennessee' : geography} under age 35, registered apprenticeship programs offer a proven pathway. Partner with ${sector} employers to create earn-while-you-learn pathways that combine on-the-job training with classroom instruction. Tennessee Reconnect and Drive to 55 initiatives provide tuition support for participants under 25, enabling credential attainment while earning competitive wages.`
+      advice: `With over half of ${pluralize(targetOccupation || "")} in ${geography === 'All' ? 'Tennessee' : geography} under age 35, registered apprenticeship programs offer a proven pathway. Partner with ${sector} employers to create earn-while-you-learn pathways that combine on-the-job training with classroom instruction. Tennessee Reconnect and Drive to 55 initiatives provide tuition support for participants under 25, enabling credential attainment while earning competitive wages.`
     });
   } else if (isMatureCohort) {
     recommendations.push({
       title: "Strategy: Mid-Career Upskilling & Re-Credentialing",
-      advice: `Many ${targetOccupation}s in this cohort (45+) have extensive work experience but lack formal credentials. Implement Prior Learning Assessment (PLA) programs that award college credit for work experience, combined with accelerated competency-based education to fast-track credential completion. Tennessee Reconnect offers tuition-free community college for adults, making this financially viable.`
+      advice: `Many ${pluralize(targetOccupation || "")} in this cohort (45+) have extensive work experience but lack formal credentials. Implement Prior Learning Assessment (PLA) programs that award college credit for work experience, combined with accelerated competency-based education to fast-track credential completion. Tennessee Reconnect offers tuition-free community college for adults, making this financially viable.`
     });
   } else {
     recommendations.push({
       title: "Strategy: Career Advancement Pathways",
-      advice: `Focus on creating clear advancement pathways for mid-career ${targetOccupation}s in ${sector}. Develop stackable credentials that allow workers to incrementally build skills while remaining employed. Partner with employers to create internal promotion pathways that recognize credential attainment with wage increases.`
+      advice: `Focus on creating clear advancement pathways for mid-career ${pluralize(targetOccupation || "")} in ${sector}. Develop stackable credentials that allow workers to incrementally build skills while remaining employed. Partner with employers to create internal promotion pathways that recognize credential attainment with wage increases.`
     });
   }
 
@@ -237,17 +270,17 @@ const App = () => {
   if (isLowEducation) {
     recommendations.push({
       title: "Strategy: Foundational Skills & Industry-Recognized Credentials",
-      advice: `With ${Math.round(lowEduCount / totalCohort * 100)}% of ${targetOccupation}s having a high school diploma or less, prioritize short-term, industry-recognized credentials that lead directly to employment. Focus on OSHA certifications, forklift operation, CDL training, and other credentials that have immediate labor market value in ${geography === 'All' ? 'Tennessee' : geography}'s ${sector} sector. Integrate adult basic education for those needing GED completion.`
+      advice: `With ${Math.round(lowEduCount / totalCohort * 100)}% of ${pluralize(targetOccupation || "")} having a high school diploma or less, prioritize short-term, industry-recognized credentials that lead directly to employment. Focus on OSHA certifications, forklift operation, CDL training, and other credentials that have immediate labor market value in ${geography === 'All' ? 'Tennessee' : geography}'s ${sector} sector. Integrate adult basic education for those needing GED completion.`
     });
   } else if (isHighEducation) {
     recommendations.push({
       title: "Strategy: Advanced Credential Stacking & Management Pathways",
-      advice: `With ${Math.round(highEduCount / totalCohort * 100)}% holding bachelor's degrees or higher, focus on management training, Six Sigma Black Belt certification, and professional certifications (PMP, SHRM-CP) that position ${targetOccupation}s for supervisory roles. For ${selectedCohort} workers with degrees, the barrier is often lack of management experience or industry-specific advanced credentials rather than education.`
+      advice: `With ${Math.round(highEduCount / totalCohort * 100)}% holding bachelor's degrees or higher, focus on management training, Six Sigma Black Belt certification, and professional certifications (PMP, SHRM-CP) that position ${pluralize(targetOccupation || "")} for supervisory roles. For ${selectedCohort} workers with degrees, the barrier is often lack of management experience or industry-specific advanced credentials rather than education.`
     });
   } else {
     recommendations.push({
       title: "Strategy: Flexible Postsecondary Completion & Certificate Programs",
-      advice: `Support ${targetOccupation}s in completing associate degrees or industry certificates through flexible delivery models (evening, weekend, online). Tennessee Colleges of Applied Technology (TCATs) offer accelerated programs aligned to ${sector} industry needs with job placement rates exceeding 85%. Emphasize stackable credentials that provide immediate wage gains while progressing toward degree completion.`
+      advice: `Support ${pluralize(targetOccupation || "")} in completing associate degrees or industry certificates through flexible delivery models (evening, weekend, online). Tennessee Colleges of Applied Technology (TCATs) offer accelerated programs aligned to ${sector} industry needs with job placement rates exceeding 85%. Emphasize stackable credentials that provide immediate wage gains while progressing toward degree completion.`
     });
   }
 
@@ -255,37 +288,37 @@ const App = () => {
   if (isManufacturing) {
     recommendations.push({
       title: "Strategy: Advanced Manufacturing Skills & Automation Training",
-      advice: `Tennessee's ${geography === 'All' ? 'statewide' : geography} manufacturing sector increasingly requires CNC machining, robotics maintenance, and industrial automation skills. Target ${targetOccupation}s for training in FANUC robotics certification, Siemens mechatronics, and Industry 4.0 competencies. Partner with manufacturers to create cohort-based training that guarantees job placement upon completion with $5-8/hour wage premiums.`
+      advice: `Tennessee's ${geography === 'All' ? 'statewide' : geography} manufacturing sector increasingly requires CNC machining, robotics maintenance, and industrial automation skills. Target ${pluralize(targetOccupation || "")} for training in FANUC robotics certification, Siemens mechatronics, and Industry 4.0 competencies. Partner with manufacturers to create cohort-based training that guarantees job placement upon completion with $5-8/hour wage premiums.`
     });
   } else if (isHealthcare) {
     recommendations.push({
       title: "Strategy: Healthcare Career Ladders & Clinical Certifications",
-      advice: `Create healthcare career pathways for ${targetOccupation}s moving from entry-level to clinical roles. Support CNA-to-LPN and LPN-to-RN bridge programs, or lateral moves into medical coding, pharmacy tech, or surgical tech roles. Tennessee's healthcare sector projects 15% growth through 2030, with median wages 40% higher than current ${selectedCohort} workers in ${geography === 'All' ? 'the state' : geography}.`
+      advice: `Create healthcare career pathways for ${pluralize(targetOccupation || "")} moving from entry-level to clinical roles. Support CNA-to-LPN and LPN-to-RN bridge programs, or lateral moves into medical coding, pharmacy tech, or surgical tech roles. Tennessee's healthcare sector projects 15% growth through 2030, with median wages 40% higher than current ${selectedCohort} workers in ${geography === 'All' ? 'the state' : geography}.`
     });
   } else if (isRetail) {
     recommendations.push({
       title: "Strategy: Digital Commerce & Customer Experience Specialization",
-      advice: `Retail and food service workers have transferable customer service skills valued in many sectors. Support ${targetOccupation}s in transitioning to higher-wage roles in sales operations, e-commerce logistics, customer success management, or hospitality management. Micro-credentials in Salesforce, digital marketing, and supply chain coordination can unlock 30-50% wage increases.`
+      advice: `Retail and food service workers have transferable customer service skills valued in many sectors. Support ${pluralize(targetOccupation || "")} in transitioning to higher-wage roles in sales operations, e-commerce logistics, customer success management, or hospitality management. Micro-credentials in Salesforce, digital marketing, and supply chain coordination can unlock 30-50% wage increases.`
     });
   } else if (isConstruction) {
     recommendations.push({
       title: "Strategy: Skilled Trades Credentialing & Supervisory Development",
-      advice: `Construction offers clear pathways from apprentice to journeyman to master craftsperson. Support ${targetOccupation}s in obtaining electrical, plumbing, or HVAC licensure through Tennessee's registered apprenticeship programs. For experienced workers, focus on supervisor/foreman training, OSHA 30-hour, and project management fundamentals that lead to superintendent roles with 50%+ wage premiums.`
+      advice: `Construction offers clear pathways from apprentice to journeyman to master craftsperson. Support ${pluralize(targetOccupation || "")} in obtaining electrical, plumbing, or HVAC licensure through Tennessee's registered apprenticeship programs. For experienced workers, focus on supervisor/foreman training, OSHA 30-hour, and project management fundamentals that lead to superintendent roles with 50%+ wage premiums.`
     });
   } else if (isProfessional) {
     recommendations.push({
       title: "Strategy: Technology Upskilling & Professional Certification",
-      advice: `Professional services increasingly require digital literacy and technical specializations. Target ${targetOccupation}s for training in data analytics (SQL, Tableau, Power BI), cloud platforms (AWS, Azure), project management (PMP, Agile), or specialized software relevant to ${sector}. These credentials can unlock remote work opportunities and salary increases of 25-40% in ${geography === 'All' ? 'Tennessee' : geography}.`
+      advice: `Professional services increasingly require digital literacy and technical specializations. Target ${pluralize(targetOccupation || "")} for training in data analytics (SQL, Tableau, Power BI), cloud platforms (AWS, Azure), project management (PMP, Agile), or specialized software relevant to ${sector}. These credentials can unlock remote work opportunities and salary increases of 25-40% in ${geography === 'All' ? 'Tennessee' : geography}.`
     });
   } else if (isEducation) {
     recommendations.push({
       title: "Strategy: Educational Support Professional Development",
-      advice: `Support ${targetOccupation}s in advancing from paraprofessional to licensed teacher roles through Tennessee's Grow Your Own teacher programs. Alternative licensure pathways and tuition assistance for bachelor's degree completion can transition classroom aides, substitute teachers, and support staff into full teaching positions with median salaries exceeding $52,000 in ${geography === 'All' ? 'Tennessee' : geography}.`
+      advice: `Support ${pluralize(targetOccupation || "")} in advancing from paraprofessional to licensed teacher roles through Tennessee's Grow Your Own teacher programs. Alternative licensure pathways and tuition assistance for bachelor's degree completion can transition classroom aides, substitute teachers, and support staff into full teaching positions with median salaries exceeding $52,000 in ${geography === 'All' ? 'Tennessee' : geography}.`
     });
   } else {
     recommendations.push({
       title: "Strategy: Cross-Sector Skills Transfer & Industry Switching",
-      advice: `Identify transferable skills of ${targetOccupation}s that are valued in higher-wage sectors. For example, operations roles transfer to logistics management, customer service transfers to healthcare patient experience, and administrative skills transfer to professional services. Provide career navigation support to help workers identify viable transitions with minimal retraining.`
+      advice: `Identify transferable skills of ${pluralize(targetOccupation || "")} that are valued in higher-wage sectors. For example, operations roles transfer to logistics management, customer service transfers to healthcare patient experience, and administrative skills transfer to professional services. Provide career navigation support to help workers identify viable transitions with minimal retraining.`
     });
   }
 
@@ -293,14 +326,14 @@ const App = () => {
   if (hasSomeCollege) {
     recommendations.push({
       title: "Strategy: College Completion & Credit for Prior Learning",
-      advice: `${Math.round(someCollegeCount / totalCohort * 100)}% of ${targetOccupation}s in ${geography === 'All' ? 'Tennessee' : geography} have some college but no degree. Implement Tennessee Reconnect re-enrollment initiatives, reverse transfer programs that award associate degrees for accumulated credits, and Prior Learning Assessment to accelerate completion. Workers with associate degrees earn 20% more than those with some college; bachelor's degrees provide 65% wage premiums.`
+      advice: `${Math.round(someCollegeCount / totalCohort * 100)}% of ${pluralize(targetOccupation || "")} in ${geography === 'All' ? 'Tennessee' : geography} have some college but no degree. Implement Tennessee Reconnect re-enrollment initiatives, reverse transfer programs that award associate degrees for accumulated credits, and Prior Learning Assessment to accelerate completion. Workers with associate degrees earn 20% more than those with some college; bachelor's degrees provide 65% wage premiums.`
     });
   }
 
   // Recommendation 5: Internal mobility pathways (always relevant)
   recommendations.push({
     title: "Strategy: Employer-Led Internal Mobility Systems",
-    advice: `Work with ${sector} employers in ${geography === 'All' ? 'Tennessee' : geography} to develop transparent internal career pathways for ${targetOccupation}s. Implement skills-based progression frameworks where workers can advance through documented skill attainment rather than degree requirements. Successful models include tuition assistance (up to $5,250/year tax-free), paid time for training, and guaranteed wage increases upon credential completion.`
+    advice: `Work with ${sector} employers in ${geography === 'All' ? 'Tennessee' : geography} to develop transparent internal career pathways for ${pluralize(targetOccupation || "")}. Implement skills-based progression frameworks where workers can advance through documented skill attainment rather than degree requirements. Successful models include tuition assistance (up to $5,250/year tax-free), paid time for training, and guaranteed wage increases upon credential completion.`
   });
 
   // Recommendation 6: Entrepreneurship (for specific occupations)
@@ -310,9 +343,30 @@ const App = () => {
   if (isEntrepreneurshipViable) {
     recommendations.push({
       title: "Strategy: Self-Employment & Microbusiness Development",
-      advice: `Many ${targetOccupation}s have skills suited for independent contracting or small business ownership. Provide access to Tennessee Small Business Development Centers (TSBDC) for business planning, SCORE mentoring, and microfinance through community lenders. Self-employed skilled workers in ${sector} can earn 20-50% more than W-2 employees, with greater schedule flexibility. Support LLC formation, insurance procurement, and digital marketing training.`
+      advice: `Many ${pluralize(targetOccupation || "")} have skills suited for independent contracting or small business ownership. Provide access to Tennessee Small Business Development Centers (TSBDC) for business planning, SCORE mentoring, and microfinance through community lenders. Self-employed skilled workers in ${sector} can earn 20-50% more than W-2 employees, with greater schedule flexibility. Support LLC formation, insurance procurement, and digital marketing training.`
     });
   }
+
+  // --- Pathways Data Integration ---
+  const matchedPathways = useMemo((): PathwayRow[] => {
+    if (!targetOccupation) return [];
+    const strandKey = cohortToPathwayKey(selectedCohort);
+    const geoKey = geographyToPathwayKey(geography);
+    const geoData = pathwaysData[strandKey]?.[geoKey] ?? pathwaysData[strandKey]?.['All Tennessee'];
+    if (!geoData) return [];
+    const rows = geoData.transitions?.filter(r => r.origin === targetOccupation) ?? [];
+    // Sort by wage gain descending
+    return [...rows].sort((a, b) => b.wage_gain_dollars - a.wage_gain_dollars);
+  }, [targetOccupation, selectedCohort, geography]);
+
+  const pathwayStats = useMemo(() => {
+    if (matchedPathways.length === 0) return null;
+    const avgWagePct = matchedPathways.reduce((s, r) => s + r.wage_gain_pct, 0) / matchedPathways.length;
+    const maxWageDollars = Math.max(...matchedPathways.map(r => r.wage_gain_dollars));
+    const avgStrandReduction = matchedPathways.reduce((s, r) => s + r.diff_strandedness, 0) / matchedPathways.length;
+    const bestStrandReduction = Math.min(...matchedPathways.map(r => r.diff_strandedness));
+    return { avgWagePct, maxWageDollars, avgStrandReduction, bestStrandReduction, count: matchedPathways.length };
+  }, [matchedPathways]);
 
   const handleExportBrief = () => {
     const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `
@@ -792,6 +846,63 @@ const App = () => {
             </div>
           </div>
           
+          {/* Proven Career Pathways — data-driven section */}
+          {matchedPathways.length > 0 && (
+            <div className="mb-8 md:mb-12">
+              <div className="flex items-center gap-3 mb-4 md:mb-6">
+                <ArrowRight size={16} className="text-amber-500 flex-shrink-0" />
+                <p className="text-[10px] md:text-[11px] font-black uppercase tracking-widest text-slate-500">
+                  Proven Career Pathways for {pluralize(targetOccupation || "")} &mdash; {geography === 'All' ? 'All Tennessee' : geography}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
+                {matchedPathways.slice(0, 6).map((p, i) => {
+                  const wagePct = Math.round(p.wage_gain_pct * 100);
+                  const strandPct = Math.round(Math.abs(p.diff_strandedness) * 100);
+                  const isTopWage = i === 0;
+                  return (
+                    <div
+                      key={i}
+                      className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border-2 transition-all ${
+                        isTopWage
+                          ? 'bg-blue-50 border-blue-300 shadow-md'
+                          : 'bg-white border-slate-100 hover:border-blue-200 hover:shadow-sm'
+                      }`}
+                    >
+                      {isTopWage && (
+                        <span className="inline-block text-[8px] font-black uppercase tracking-widest bg-blue-600 text-white px-2 py-0.5 rounded-full mb-2">
+                          Top Wage Gain
+                        </span>
+                      )}
+                      <p className="text-xs md:text-sm font-black text-slate-800 leading-snug mb-3">{p.destination}</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] md:text-[10px] font-bold uppercase text-slate-400 tracking-widest">Wage Gain</span>
+                          <span className="text-xs md:text-sm font-black text-emerald-600">
+                            +${p.wage_gain_dollars.toLocaleString()} <span className="font-bold text-emerald-500">({wagePct > 0 ? `+${wagePct}` : wagePct}%)</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] md:text-[10px] font-bold uppercase text-slate-400 tracking-widest">Less Stranded</span>
+                          <span className="text-xs md:text-sm font-black text-blue-600">{strandPct}% reduction</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] md:text-[10px] font-bold uppercase text-slate-400 tracking-widest">Similarity</span>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-amber-400 rounded-full" style={{ width: `${Math.round(p.similarity * 100)}%` }} />
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-500">{Math.round(p.similarity * 100)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-7 space-y-4 md:space-y-6">
               {recommendations.map((rec, i) => (
@@ -809,17 +920,27 @@ const App = () => {
                   {expandedRec === i && (
                     <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
                       <p className="text-sm md:text-base text-slate-600 leading-relaxed font-medium">{rec.advice}</p>
+                      {/* Inline top pathway callout when data available */}
+                      {matchedPathways.length > 0 && (
+                        <div className="mt-4 md:mt-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                          <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-blue-400 mb-2">Highest-Impact Pathway for {pluralize(targetOccupation || "")}</p>
+                          <p className="text-sm font-black text-blue-900">{matchedPathways[0].destination}</p>
+                          <p className="text-xs text-blue-700 mt-1 font-medium">
+                            +${matchedPathways[0].wage_gain_dollars.toLocaleString()} wage gain &nbsp;&bull;&nbsp; {Math.round(Math.abs(matchedPathways[0].diff_strandedness) * 100)}% less stranded &nbsp;&bull;&nbsp; {Math.round(matchedPathways[0].similarity * 100)}% skill similarity
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            
+
             <div className="col-span-12 lg:col-span-5">
               <div className="bg-[#1E3A8A] text-white p-6 md:p-12 rounded-[32px] md:rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-4 md:border-t-8 border-amber-500">
                 <div className="relative z-10">
                   <h3 className="text-xl md:text-2xl font-black leading-tight mb-6 md:mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
-                  
+
                   <div className="mb-6 md:mb-10 space-y-3 md:space-y-4">
                     <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
                       <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Region</span>
@@ -837,6 +958,12 @@ const App = () => {
                       <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Strandedness</span>
                       <span className="font-bold text-xs md:text-sm">{selectedCohort}</span>
                     </div>
+                    {matchedPathways.length > 0 && (
+                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Pathways Found</span>
+                        <span className="font-bold text-xs md:text-sm text-amber-400">{matchedPathways.length} options</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-6 md:space-y-10">
@@ -845,10 +972,37 @@ const App = () => {
                         <TrendingUp size={24} className="md:w-7 md:h-7" />
                       </div>
                       <div>
-                        <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Potential Wage Uplift Range</p>
-                        <p className="text-2xl md:text-3xl font-black">+18% - 25% Avg.</p>
+                        <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">
+                          {pathwayStats ? 'Max Wage Gain (Top Pathway)' : 'Potential Wage Uplift Range'}
+                        </p>
+                        <p className="text-2xl md:text-3xl font-black">
+                          {pathwayStats
+                            ? `+$${pathwayStats.maxWageDollars.toLocaleString()}`
+                            : '+18% – 25% Avg.'}
+                        </p>
+                        {pathwayStats && (
+                          <p className="text-[10px] text-blue-300 mt-1">
+                            Avg. across {pathwayStats.count} pathways: +{Math.round(pathwayStats.avgWagePct * 100)}%
+                          </p>
+                        )}
                       </div>
                     </div>
+                    {pathwayStats && (
+                      <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                          <Target size={24} className="md:w-7 md:h-7" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Strandedness Reduction</p>
+                          <p className="text-2xl md:text-3xl font-black">
+                            {Math.round(Math.abs(pathwayStats.bestStrandReduction) * 100)}% best
+                          </p>
+                          <p className="text-[10px] text-blue-300 mt-1">
+                            Avg. {Math.round(Math.abs(pathwayStats.avgStrandReduction) * 100)}% across pathways
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center gap-4 md:gap-8">
                       <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
                         <Users size={24} className="md:w-7 md:h-7" />
