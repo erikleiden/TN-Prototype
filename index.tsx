@@ -339,18 +339,29 @@ const App = () => {
   const destinationPathways = useMemo(() => {
     if (!targetOccupation) return [];
     if (pathwayMode === 'transitions') {
-      return careerPathways.transitions
+      const transResults = careerPathways.transitions
         .filter(r => r.origin === targetOccupation)
         .sort((a, b) => b.at_year_5 - a.at_year_5)
         .slice(0, 5);
+      // If no transitions found, fall back to similarity with a flag
+      if (transResults.length === 0) {
+        return careerPathways.similarity
+          .filter(r => r.origin === targetOccupation)
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, 5)
+          .map(r => ({ ...r, at_year_5: 0, _fallback: true } as TransitionRow & { _fallback?: boolean }));
+      }
+      return transResults;
     } else {
       return careerPathways.similarity
         .filter(r => r.origin === targetOccupation)
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 5)
-        .map(r => ({ ...r, at_year_5: 0 } as TransitionRow)); // similarity rows don't have at_year_5
+        .map(r => ({ ...r, at_year_5: 0 } as TransitionRow));
     }
   }, [targetOccupation, pathwayMode]);
+
+  const isTransitionFallback = pathwayMode === 'transitions' && destinationPathways.length > 0 && (destinationPathways[0] as any)?._fallback;
 
   // --- Section 04: Skill gaps for selected origin -> destination ---
   const selectedSkillGaps = useMemo(() => {
@@ -379,8 +390,9 @@ const App = () => {
     const totalDestCount = allDests.length;
 
     // Get all skill gaps for this origin across all destinations
+    // Filter for meaningful skills: importance > 0.005 and gap > 0.005
     const allSkillGaps = careerPathways.skills.filter(
-      r => r.origin === targetOccupation && r.gap > 0 && allDests.includes(r.destination)
+      r => r.origin === targetOccupation && r.gap > 0.005 && r.importance > 0.005 && allDests.includes(r.destination)
     );
 
     // Count how many destinations each skill appears in, and track max importance
@@ -393,7 +405,9 @@ const App = () => {
       skillMap[s.skill].maxImportance = Math.max(skillMap[s.skill].maxImportance, s.importance);
     });
 
+    // Require appearing in at least 2 pathways to qualify as "cross-pathway"
     return Object.entries(skillMap)
+      .filter(([, data]) => data.count >= 2)
       .sort((a, b) => b[1].count - a[1].count || b[1].maxImportance - a[1].maxImportance)
       .slice(0, 5)
       .map(([skill, data]) => ({ skill, count: data.count, totalDests: totalDestCount, importance: data.maxImportance }));
@@ -969,12 +983,17 @@ const App = () => {
           {/* 4b. Destination Pathways Panel */}
           {targetOccupation && (
             <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-4">
                 <ArrowRight size={16} className="text-amber-500 flex-shrink-0" />
                 <p className="text-[10px] md:text-[11px] font-black uppercase tracking-widest text-slate-500">
-                  {pathwayMode === 'transitions' ? 'Top Observed Transitions' : 'Most Skill-Similar Occupations'} for {pluralize(targetOccupation)}
+                  {pathwayMode === 'transitions' && !isTransitionFallback ? 'Top Observed Transitions' : 'Most Skill-Similar Occupations'} for {pluralize(targetOccupation)}
                 </p>
               </div>
+              {isTransitionFallback && (
+                <p className="text-xs text-amber-600 font-medium mb-4 bg-amber-50 px-4 py-2 rounded-xl border border-amber-100">
+                  No observed transition data available for this occupation. Showing skill-similar occupations instead.
+                </p>
+              )}
 
               {destinationPathways.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 md:gap-4">
@@ -1061,11 +1080,12 @@ const App = () => {
                         <div className="space-y-3">
                           {selectedSkillGaps.map((s, i) => {
                             const maxGap = selectedSkillGaps[0].gap;
+                            const pctGap = Math.round(s.gap * 100);
                             return (
                               <div key={i} className="space-y-1">
                                 <div className="flex justify-between text-[10px] font-bold text-slate-500">
                                   <span className="truncate pr-2">{s.skill}</span>
-                                  <span className="tabular-nums text-blue-600">Gap: {s.gap.toFixed(2)}</span>
+                                  <span className="tabular-nums text-blue-600">{pctGap}% gap</span>
                                 </div>
                                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                                   <div
@@ -1108,7 +1128,7 @@ const App = () => {
                               <FileText size={14} className="text-amber-600 flex-shrink-0" />
                               <div>
                                 <p className="text-sm font-black text-slate-800">{s.skill}</p>
-                                <p className="text-[10px] text-slate-500">Gap: {s.gap.toFixed(2)} | Importance: {s.importance.toFixed(2)}</p>
+                                <p className="text-[10px] text-slate-500">{Math.round(s.gap * 100)}% skill gap | {Math.round(s.importance * 100)}% importance in destination</p>
                               </div>
                             </div>
                           ))}
@@ -1187,7 +1207,7 @@ const App = () => {
                                 <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs flex-shrink-0">{i + 1}</div>
                                 <div>
                                   <p className="text-sm font-black text-slate-800">{s.skill}</p>
-                                  <p className="text-[10px] text-slate-400">Importance: {s.importance.toFixed(2)}</p>
+                                  <p className="text-[10px] text-slate-400">{Math.round(s.importance * 100)}% importance score</p>
                                 </div>
                               </div>
                               <div className="text-right">
