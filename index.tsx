@@ -374,11 +374,25 @@ const App = () => {
 
   // --- Section 04: Credential-related skills ---
   const credentialSkills = useMemo(() => {
-    const credentialKeywords = ['Licens', 'Certif', 'Degree', 'CPA', 'RN', 'CDL', 'OSHA', 'Board', 'Accredit', 'Registr'];
-    return selectedSkillGaps.filter(s =>
-      credentialKeywords.some(kw => s.skill.toLowerCase().includes(kw.toLowerCase()))
-    );
-  }, [selectedSkillGaps]);
+    // Match skills that are actual credentials: certification, license, degree patterns
+    // Use strict patterns to avoid false positives like "Dashboard", "Furnaces", etc.
+    const credentialPatterns = [
+      /\bcertif/i, /\blicens/i, /\bdegree\b/i, /\baccredit/i,
+      /\bCDL\b/, /\bOSHA\b/, /\bCPA\b/, /\bCNA\b/, /\bRN\b/, /\bLPN\b/, /\bLVN\b/,
+      /\bAPRN\b/, /\bPA-C\b/, /\bLCSW\b/, /\bLMFT\b/, /\bLMHC\b/, /\bLPC\b/,
+      /\bCRNA\b/, /\bCRT\b/, /\bCST\b/, /\bCPC\b/, /\bCCS\b/, /\bCMA\b/,
+      /\bBCBA\b/, /\bNBCOT\b/, /\bNCCER\b/, /\bASE\b/, /\bGIAC\b/, /\bLEED\b/,
+      /\bServSafe\b/, /\bJourneyman\b/, /\bPeace Officer\b/, /\bTeaching Certificate\b/,
+      /\bBoard Certified\b/i, /\bBoard Eligible\b/i,
+      /\bDriver's License\b/i, /\bA&P\b.*Certificate/i,
+    ];
+    if (!targetOccupation || !selectedDestination) return [];
+    // Search all skills for this pair (not just top 10 by gap) for credential matches
+    return careerPathways.skills
+      .filter(r => r.origin === targetOccupation && r.destination === selectedDestination && r.gap > 0)
+      .filter(s => credentialPatterns.some(p => p.test(s.skill)))
+      .sort((a, b) => b.importance - a.importance);
+  }, [targetOccupation, selectedDestination]);
 
   // --- Section 04: Cross-pathway skill acquisition ---
   const crossPathwaySkills = useMemo(() => {
