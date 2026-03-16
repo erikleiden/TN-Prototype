@@ -3,360 +3,231 @@
     {
       "profession": "Certified Public Accountant",
       "regulation": "License",
-      "degree": "Bachelor's Degree",
-      "initial_fee": "1630.56",
-      "exams": "5",
-      "experience": "2000",
-      "continuing_education": "80",
-      "renewal_fee": "110",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "Bachelor's Degree"
+    }
+  ],
+  "Mechanical Engineers": [
+    {
+      "profession": "Professional Engineer",
+      "regulation": "License",
+      "degree": "Bachelor's Degree"
+    }
+  ],
+  "Electrical and Electronics Engineers": [
+    {
+      "profession": "Professional Engineer",
+      "regulation": "License",
+      "degree": "Bachelor's Degree"
     }
   ],
   "Civil Engineers": [
     {
-      "profession": "Structural Engineer",
-      "regulation": "",
-      "degree": "",
-      "initial_fee": "",
-      "exams": "",
-      "experience": "",
-      "continuing_education": "",
-      "renewal_fee": "",
-      "minimum_age": "",
-      "good_moral_character": "",
-      "citizenship": ""
+      "profession": "Professional Engineer",
+      "regulation": "License",
+      "degree": "Bachelor's Degree"
     }
   ],
   "Nurse Anesthetists": [
     {
       "profession": "Nurse Anesthetist",
       "regulation": "License",
-      "degree": "Master's Degree",
-      "initial_fee": "39.15",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "2",
-      "renewal_fee": "110",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "1"
+      "degree": "Master's Degree"
     }
   ],
   "Veterinarians": [
     {
       "profession": "Veterinarian",
       "regulation": "License",
-      "degree": "Doctorate Degree",
-      "initial_fee": "135",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "40",
-      "renewal_fee": "370",
-      "minimum_age": "",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Doctorate Degree"
     }
   ],
   "Veterinary Technologists And Technicians": [
     {
       "profession": "Veterinarian Technician",
       "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "85",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "24",
-      "renewal_fee": "100",
-      "minimum_age": "",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Associate's Degree"
     }
   ],
   "Hairdressers, Hairstylists, and Cosmetologists": [
     {
       "profession": "Cosmetologist",
       "regulation": "License",
-      "degree": "10th Grade",
-      "initial_fee": "200",
-      "exams": "2",
-      "experience": "1500",
-      "continuing_education": "0",
-      "renewal_fee": "60",
-      "minimum_age": "16",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "10th Grade"
     }
   ],
   "Architects, Except Landscape And Naval": [
     {
       "profession": "Architect",
       "regulation": "License",
-      "degree": "Bachelor's Degree",
-      "initial_fee": "170",
-      "exams": "1",
-      "experience": "3740",
-      "continuing_education": "24",
-      "renewal_fee": "140",
-      "minimum_age": "",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Bachelor's Degree"
     }
   ],
   "Construction and Building Inspectors": [
     {
       "profession": "Home Inspector",
       "regulation": "License",
-      "degree": "High School Diploma",
-      "initial_fee": "300",
-      "exams": "1",
-      "experience": "90",
-      "continuing_education": "32",
-      "renewal_fee": "200",
-      "minimum_age": "18",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "High School Diploma"
+    }
+  ],
+  "First-Line Supervisors of Police and Detectives": [
+    {
+      "profession": "Police Officer",
+      "regulation": "License",
+      "degree": "High School Diploma"
     }
   ],
   "Physician Assistants": [
     {
       "profession": "Physician Assistant",
       "regulation": "License",
-      "degree": "Master's Degree",
-      "initial_fee": "335",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "100",
-      "renewal_fee": "175",
-      "minimum_age": "",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Master's Degree"
     }
   ],
   "Registered Nurses": [
     {
       "profession": "Registered Nurse",
       "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "200",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "5",
-      "renewal_fee": "100",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "1"
+      "degree": "Associate's Degree"
     }
   ],
   "Pharmacists": [
     {
       "profession": "Pharmacist",
       "regulation": "License",
-      "degree": "Doctorate Degree",
-      "initial_fee": "235",
-      "exams": "2",
-      "experience": "1700",
-      "continuing_education": "30",
-      "renewal_fee": "185",
-      "minimum_age": "21",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "Doctorate Degree"
     }
   ],
   "Respiratory Therapists": [
     {
       "profession": "Respiratory Therapist",
       "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "60",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "24",
-      "renewal_fee": "75",
-      "minimum_age": "18",
-      "good_moral_character": "0",
-      "citizenship": "1"
+      "degree": "Associate's Degree"
     }
   ],
-  "Crane and Tower Operators": [
+  "Detectives and Criminal Investigators": [
     {
-      "profession": "Crane Operator",
-      "regulation": "None",
-      "degree": "",
-      "initial_fee": "",
-      "exams": "",
-      "experience": "",
-      "continuing_education": "",
-      "renewal_fee": "",
-      "minimum_age": "",
-      "good_moral_character": "",
-      "citizenship": ""
+      "profession": "Private Investigator",
+      "regulation": "License",
+      "degree": "None"
     }
   ],
   "Sales and Related Workers, All Other": [
     {
-      "profession": "Auctioneer Apprentice",
+      "profession": "Auctioneer",
       "regulation": "License",
-      "degree": "None",
-      "initial_fee": "375",
-      "exams": "1",
-      "experience": "1000",
-      "continuing_education": "6",
-      "renewal_fee": "125",
-      "minimum_age": "18",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "Certification"
     }
   ],
   "Dental Hygienists": [
     {
       "profession": "Dental Hygienist",
       "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "96.25",
-      "exams": "3",
-      "experience": "0",
-      "continuing_education": "30",
-      "renewal_fee": "85",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Associate's Degree"
     }
   ],
   "Dental Assistants": [
     {
       "profession": "Dental Assistant",
       "regulation": "License",
-      "degree": "Certification",
-      "initial_fee": "32.5",
-      "exams": "2",
-      "experience": "0",
-      "continuing_education": "24",
-      "renewal_fee": "47.5",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Certification"
+    }
+  ],
+  "Surgical Technologists": [
+    {
+      "profession": "Surgical Assistant",
+      "regulation": "Certification",
+      "degree": "Certification"
+    }
+  ],
+  "Physical Therapist Assistants and Aides": [
+    {
+      "profession": "Physical Therapist Assistant",
+      "regulation": "License",
+      "degree": "Associate's Degree"
     }
   ],
   "Physical Therapists": [
     {
       "profession": "Physical Therapist",
       "regulation": "License",
-      "degree": "Doctorate Degree",
-      "initial_fee": "620",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "30",
-      "renewal_fee": "65",
-      "minimum_age": "",
-      "good_moral_character": "1",
-      "citizenship": "1"
+      "degree": "Doctorate Degree"
+    }
+  ],
+  "Licensed Practical and Licensed Vocational Nurses": [
+    {
+      "profession": "Licensed Practical Nurse",
+      "regulation": "License",
+      "degree": "Certification"
     }
   ],
   "Occupational Therapists": [
     {
       "profession": "Occupational Therapist",
       "regulation": "License",
-      "degree": "Master's Degree",
-      "initial_fee": "650",
-      "exams": "1",
-      "experience": "1000",
-      "continuing_education": "24",
-      "renewal_fee": "85",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "Master's Degree"
     }
   ],
   "Manicurists and Pedicurists": [
     {
       "profession": "Nail Technician",
       "regulation": "License",
-      "degree": "10th Grade",
-      "initial_fee": "200",
-      "exams": "2",
-      "experience": "300",
-      "continuing_education": "0",
-      "renewal_fee": "60",
-      "minimum_age": "16",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "10th Grade"
+    }
+  ],
+  "Medical Assistants": [
+    {
+      "profession": "Surgical Assistant",
+      "regulation": "Certification",
+      "degree": "Certification"
     }
   ],
   "Radiologic Technologists And Technicians": [
     {
       "profession": "Radiologic Technologist",
       "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "60",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "24",
-      "renewal_fee": "60",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Associate's Degree"
     }
   ],
   "Opticians, Dispensing": [
     {
       "profession": "Optician",
       "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "75",
-      "exams": "4",
-      "experience": "0",
-      "continuing_education": "18",
-      "renewal_fee": "85",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "0"
+      "degree": "Associate's Degree"
+    }
+  ],
+  "Nurse Practitioners and Nurse Midwives": [
+    {
+      "profession": "Nurse Practitioner",
+      "regulation": "License",
+      "degree": "Master's Degree"
     }
   ],
   "Pharmacy Technicians": [
     {
       "profession": "Pharmacy Technician",
       "regulation": "Registration",
-      "degree": "None",
-      "initial_fee": "75",
-      "exams": "0",
-      "experience": "0",
-      "continuing_education": "0",
-      "renewal_fee": "95",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "0"
+      "degree": "None"
     }
   ],
   "Private Detectives and Investigators": [
     {
       "profession": "Private Investigator",
       "regulation": "License",
-      "degree": "None",
-      "initial_fee": "250",
-      "exams": "1",
-      "experience": "1000",
-      "continuing_education": "12",
-      "renewal_fee": "100",
-      "minimum_age": "21",
-      "good_moral_character": "1",
-      "citizenship": "1"
+      "degree": "None"
     }
   ],
   "Speech-Language Pathologists": [
     {
       "profession": "Speech Language Pathologist",
       "regulation": "License",
-      "degree": "Master's Degree",
-      "initial_fee": "160",
-      "exams": "2",
-      "experience": "0",
-      "continuing_education": "20",
-      "renewal_fee": "70",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "1"
+      "degree": "Master's Degree"
+    }
+  ],
+  "Police Officers": [
+    {
+      "profession": "Police Officer",
+      "regulation": "License",
+      "degree": "High School Diploma"
     }
   ]
 }

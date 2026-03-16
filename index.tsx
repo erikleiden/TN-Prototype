@@ -104,14 +104,6 @@ interface LicenseEntry {
   profession: string;
   regulation: string;
   degree: string;
-  initial_fee: string;
-  exams: string;
-  experience: string;
-  continuing_education: string;
-  renewal_fee: string;
-  minimum_age: string;
-  good_moral_character: string;
-  citizenship: string;
 }
 const tnLicenses = tnLicensesRaw as Record<string, LicenseEntry[]>;
 
@@ -1163,48 +1155,15 @@ const App = () => {
                                 Workers transitioning into this field should be aware of the following state requirements:
                               </p>
                               {destLicenses.map((lic, i) => (
-                                <div key={i} className="p-5 bg-amber-50 rounded-2xl border border-amber-200">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <GraduationCap size={16} className="text-amber-700" />
-                                    <h4 className="text-base font-black text-slate-800">{lic.profession}</h4>
-                                    {lic.regulation && <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full uppercase">{lic.regulation}</span>}
-                                  </div>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <div key={i} className="flex items-center gap-4 p-4 bg-amber-50 rounded-2xl border border-amber-200">
+                                  <GraduationCap size={18} className="text-amber-700 flex-shrink-0" />
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="text-sm font-black text-slate-800">{lic.profession}</h4>
+                                      {lic.regulation && <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full uppercase">{lic.regulation}</span>}
+                                    </div>
                                     {lic.degree && lic.degree !== 'None' && (
-                                      <div className="p-2 bg-white rounded-xl">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Education</p>
-                                        <p className="text-sm font-bold text-slate-700">{lic.degree}</p>
-                                      </div>
-                                    )}
-                                    {lic.initial_fee && parseFloat(lic.initial_fee) > 0 && (
-                                      <div className="p-2 bg-white rounded-xl">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Initial Fee</p>
-                                        <p className="text-sm font-bold text-slate-700">${parseFloat(lic.initial_fee).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</p>
-                                      </div>
-                                    )}
-                                    {lic.exams && parseInt(lic.exams) > 0 && (
-                                      <div className="p-2 bg-white rounded-xl">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Exams Required</p>
-                                        <p className="text-sm font-bold text-slate-700">{lic.exams}</p>
-                                      </div>
-                                    )}
-                                    {lic.experience && lic.experience !== '0' && (
-                                      <div className="p-2 bg-white rounded-xl">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Experience (yrs)</p>
-                                        <p className="text-sm font-bold text-slate-700">{lic.experience}</p>
-                                      </div>
-                                    )}
-                                    {lic.continuing_education && parseInt(lic.continuing_education) > 0 && (
-                                      <div className="p-2 bg-white rounded-xl">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Continuing Ed</p>
-                                        <p className="text-sm font-bold text-slate-700">{lic.continuing_education} hrs</p>
-                                      </div>
-                                    )}
-                                    {lic.renewal_fee && parseFloat(lic.renewal_fee) > 0 && (
-                                      <div className="p-2 bg-white rounded-xl">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Renewal Fee</p>
-                                        <p className="text-sm font-bold text-slate-700">${parseFloat(lic.renewal_fee).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</p>
-                                      </div>
+                                      <p className="text-xs text-slate-500 mt-1">Requires: <span className="font-bold text-slate-700">{lic.degree}</span></p>
                                     )}
                                   </div>
                                 </div>
