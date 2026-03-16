@@ -114,6 +114,51 @@ const loadCSVData = async (): Promise<DataRow[]> => {
   }
 };
 
+// --- Stalled Workers Data ---
+interface StalledRow {
+  msa_category: string;
+  naics2_title: string;
+  soc2_name: string;
+  soc_2019_5_acs_name: string;
+  n_career_stalled_weighted: number;
+  tenure_years: number;
+}
+
+const loadStalledData = async (): Promise<StalledRow[]> => {
+  try {
+    const response = await fetch('/stalled_workers.csv');
+    const csvText = await response.text();
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          resolve((results.data as any[]).map((r: any) => ({
+            msa_category: r.msa_category || '',
+            naics2_title: r.naics2_title || '',
+            soc2_name: r.soc2_name || '',
+            soc_2019_5_acs_name: r.soc_2019_5_acs_name || '',
+            n_career_stalled_weighted: Number(r.n_career_stalled_weighted) || 0,
+            tenure_years: Number(r.tenure_years) || 0,
+          })));
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error loading stalled data:', error);
+    return [];
+  }
+};
+
+const TENURE_BUCKETS: [string, number, number][] = [
+  ['< 1 yr',  0,   1],
+  ['1-2 yrs', 1,   2],
+  ['2-3 yrs', 2,   3],
+  ['3-5 yrs', 3,   5],
+  ['5+ yrs',  5, Infinity],
+];
+
 // --- Components ---
 
 const ProgressBar: React.FC<{ label: string, value: number, max: number, colorClass: string }> = ({ label, value, max, colorClass }) => (
@@ -159,12 +204,14 @@ const App = () => {
   const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
   const [expandedRec, setExpandedRec] = useState<number | null>(0);
   const [rawData, setRawData] = useState<DataRow[]>([]);
+  const [stalledData, setStalledData] = useState<StalledRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Load data on mount
   useEffect(() => {
-    loadCSVData().then(data => {
+    Promise.all([loadCSVData(), loadStalledData()]).then(([data, stalled]) => {
       setRawData(data);
+      setStalledData(stalled);
       setIsLoading(false);
     });
   }, []);
@@ -178,16 +225,24 @@ const App = () => {
     rawData.filter(d => (geography === 'All' || d.msa_category === geography) && d.NAICS2_NAME === sector),
   [rawData, geography, sector]);
 
+  const stalledByScope = useMemo(() =>
+    stalledData.filter(d =>
+      (geography === 'All' || d.msa_category === geography) &&
+      d.naics2_title === sector
+    ),
+    [stalledData, geography, sector]
+  );
+
   const stats = useMemo(() => {
     let lw = 0, ue = 0, st = 0, total = 0;
     filteredByScope.forEach(d => {
       total += d.n_weighted;
       lw += d.n_weighted_low_wage;
       ue += d.n_weighted_underemployed;
-      st += d.n_weighted_stalled;
     });
+    st = stalledByScope.reduce((sum, d) => sum + d.n_career_stalled_weighted, 0);
     return { total, lw, ue, st };
-  }, [filteredByScope]);
+  }, [filteredByScope, stalledByScope]);
 
   const cohortBreakdowns = useMemo(() => {
     const edu: Record<string, number> = {};
@@ -212,6 +267,22 @@ const App = () => {
       occ: (Object.entries(occ).sort((a,b) => b[1] - a[1]).filter(([, val]) => val > 0)) as [string, number][]
     };
   }, [filteredByScope, selectedCohort]);
+
+  const stalledBreakdowns = useMemo(() => {
+    const occMix: Record<string, number> = {};
+    const durations: Record<string, number> = Object.fromEntries(TENURE_BUCKETS.map(([l]) => [l, 0]));
+
+    stalledByScope.forEach(d => {
+      occMix[d.soc2_name] = (occMix[d.soc2_name] || 0) + d.n_career_stalled_weighted;
+      const bucket = TENURE_BUCKETS.find(([, lo, hi]) => d.tenure_years >= lo && d.tenure_years < hi);
+      if (bucket) durations[bucket[0]] += d.n_career_stalled_weighted;
+    });
+
+    return {
+      occMix: Object.entries(occMix).sort((a, b) => b[1] - a[1]) as [string, number][],
+      durations: TENURE_BUCKETS.map(([label]) => [label, durations[label]]) as [string, number][],
+    };
+  }, [stalledByScope]);
 
   useEffect(() => {
     if (cohortBreakdowns.occ.length > 0) {
@@ -773,32 +844,63 @@ const App = () => {
             
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
-                <div className="space-y-6">
-                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Users size={14} className="text-blue-500"/> Age Profile</p>
-                  <div className="space-y-5">
-                    {cohortBreakdowns.age.map(([label, val]) => (
-                      <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.age.map(x => x[1]))} colorClass="bg-blue-600" />
-                    ))}
+              {selectedCohort === 'Stalled' ? (
+                <>
+                  {/* Occupational Mix of Stalled Talent */}
+                  <div className="space-y-6">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Briefcase size={14} className="text-emerald-500"/> Occupational Mix</p>
+                    <div className="space-y-5">
+                      {stalledBreakdowns.occMix.length > 0
+                        ? stalledBreakdowns.occMix.slice(0, 6).map(([label, val]) => (
+                            <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(stalledBreakdowns.occMix[0][1])} colorClass="bg-emerald-500" />
+                          ))
+                        : <p className="text-xs text-slate-400 italic">No stalled workers in this selection.</p>
+                      }
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-6">
-                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><GraduationCap size={14} className="text-amber-500"/> Edu Level</p>
-                  <div className="space-y-5">
-                    {cohortBreakdowns.edu.map(([label, val]) => (
-                      <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.edu.map(x => x[1]))} colorClass="bg-amber-500" />
-                    ))}
+                  {/* Stall Duration Distribution */}
+                  <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14} className="text-emerald-700"/> Stall Duration</p>
+                    <div className="space-y-5">
+                      {(() => {
+                        const maxDur = Math.max(...stalledBreakdowns.durations.map(([, v]) => v as number), 1);
+                        return stalledBreakdowns.durations.map(([label, val]) => (
+                          <ProgressBar key={label} label={label} value={Math.round(val as number)} max={Math.round(maxDur)} colorClass="bg-emerald-700" />
+                        ));
+                      })()}
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="mt-8 md:mt-12 pt-8 md:pt-10 border-t border-slate-100">
-                <p className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> <span className="hidden sm:inline">Occupations with Most Stranded Workers</span><span className="sm:hidden">Top Occupations</span></p>
-                <div className="space-y-4">
-                  {cohortBreakdowns.occ.slice(0, 4).map(([label, val]) => (
-                    <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.occ.map(x => x[1]))} colorClass="bg-emerald-500" />
-                  ))}
-                </div>
-              </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
+                    <div className="space-y-6">
+                      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Users size={14} className="text-blue-500"/> Age Profile</p>
+                      <div className="space-y-5">
+                        {cohortBreakdowns.age.map(([label, val]) => (
+                          <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.age.map(x => x[1]))} colorClass="bg-blue-600" />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-6">
+                      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><GraduationCap size={14} className="text-amber-500"/> Edu Level</p>
+                      <div className="space-y-5">
+                        {cohortBreakdowns.edu.map(([label, val]) => (
+                          <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.edu.map(x => x[1]))} colorClass="bg-amber-500" />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-8 md:mt-12 pt-8 md:pt-10 border-t border-slate-100">
+                    <p className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> <span className="hidden sm:inline">Occupations with Most Stranded Workers</span><span className="sm:hidden">Top Occupations</span></p>
+                    <div className="space-y-4">
+                      {cohortBreakdowns.occ.slice(0, 4).map(([label, val]) => (
+                        <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.occ.map(x => x[1]))} colorClass="bg-emerald-500" />
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </section>
