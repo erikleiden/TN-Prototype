@@ -76,19 +76,6 @@
   ],
   "Hairdressers, Hairstylists, and Cosmetologists": [
     {
-      "profession": "Natural Hair Braider",
-      "regulation": "License",
-      "degree": "10th Grade",
-      "initial_fee": "200",
-      "exams": "2",
-      "experience": "300",
-      "continuing_education": "0",
-      "renewal_fee": "60",
-      "minimum_age": "16",
-      "good_moral_character": "0",
-      "citizenship": "0"
-    },
-    {
       "profession": "Cosmetologist",
       "regulation": "License",
       "degree": "10th Grade",
@@ -119,19 +106,6 @@
   ],
   "Construction and Building Inspectors": [
     {
-      "profession": "Home Inspector Trainee",
-      "regulation": "None",
-      "degree": "",
-      "initial_fee": "",
-      "exams": "",
-      "experience": "",
-      "continuing_education": "",
-      "renewal_fee": "",
-      "minimum_age": "",
-      "good_moral_character": "",
-      "citizenship": ""
-    },
-    {
       "profession": "Home Inspector",
       "regulation": "License",
       "degree": "High School Diploma",
@@ -161,32 +135,6 @@
     }
   ],
   "Registered Nurses": [
-    {
-      "profession": "Licensed Practical Nurse",
-      "regulation": "License",
-      "degree": "Certification",
-      "initial_fee": "200",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "10",
-      "renewal_fee": "100",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "0"
-    },
-    {
-      "profession": "Clinical Nurse Specialist",
-      "regulation": "License",
-      "degree": "Master's Degree",
-      "initial_fee": "0",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "2",
-      "renewal_fee": "110",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "1"
-    },
     {
       "profession": "Registered Nurse",
       "regulation": "License",
@@ -259,19 +207,6 @@
       "minimum_age": "18",
       "good_moral_character": "0",
       "citizenship": "0"
-    },
-    {
-      "profession": "Auctioneer",
-      "regulation": "License",
-      "degree": "Certification",
-      "initial_fee": "425",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "6",
-      "renewal_fee": "175",
-      "minimum_age": "18",
-      "good_moral_character": "0",
-      "citizenship": "0"
     }
   ],
   "Dental Hygienists": [
@@ -321,19 +256,6 @@
   ],
   "Occupational Therapists": [
     {
-      "profession": "Occupational Therapist Assistant",
-      "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "625",
-      "exams": "1",
-      "experience": "667",
-      "continuing_education": "24",
-      "renewal_fee": "60",
-      "minimum_age": "",
-      "good_moral_character": "1",
-      "citizenship": "0"
-    },
-    {
       "profession": "Occupational Therapist",
       "regulation": "License",
       "degree": "Master's Degree",
@@ -364,19 +286,6 @@
   ],
   "Radiologic Technologists And Technicians": [
     {
-      "profession": "Radiologist Assistant",
-      "regulation": "License",
-      "degree": "Bachelor's Degree",
-      "initial_fee": "60",
-      "exams": "1",
-      "experience": "0",
-      "continuing_education": "24",
-      "renewal_fee": "60",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "0"
-    },
-    {
       "profession": "Radiologic Technologist",
       "regulation": "License",
       "degree": "Associate's Degree",
@@ -388,48 +297,9 @@
       "minimum_age": "18",
       "good_moral_character": "1",
       "citizenship": "0"
-    },
-    {
-      "profession": "Limited X-ray Machine Operators",
-      "regulation": "License",
-      "degree": "Certification",
-      "initial_fee": "110",
-      "exams": "2",
-      "experience": "0",
-      "continuing_education": "20",
-      "renewal_fee": "50",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "1"
-    },
-    {
-      "profession": "Dental Radiographer",
-      "regulation": "None",
-      "degree": "",
-      "initial_fee": "",
-      "exams": "",
-      "experience": "",
-      "continuing_education": "",
-      "renewal_fee": "",
-      "minimum_age": "",
-      "good_moral_character": "",
-      "citizenship": ""
     }
   ],
   "Opticians, Dispensing": [
-    {
-      "profession": "Optometrist",
-      "regulation": "License",
-      "degree": "Doctorate Degree",
-      "initial_fee": "150",
-      "exams": "4",
-      "experience": "0",
-      "continuing_education": "40",
-      "renewal_fee": "285",
-      "minimum_age": "21",
-      "good_moral_character": "1",
-      "citizenship": "1"
-    },
     {
       "profession": "Optician",
       "regulation": "License",
@@ -475,32 +345,6 @@
     }
   ],
   "Speech-Language Pathologists": [
-    {
-      "profession": "Audiologist",
-      "regulation": "License",
-      "degree": "Doctorate Degree",
-      "initial_fee": "160",
-      "exams": "2",
-      "experience": "0",
-      "continuing_education": "20",
-      "renewal_fee": "70",
-      "minimum_age": "18",
-      "good_moral_character": "1",
-      "citizenship": "0"
-    },
-    {
-      "profession": "Speech Language Pathologist Assistant",
-      "regulation": "License",
-      "degree": "Associate's Degree",
-      "initial_fee": "30",
-      "exams": "0",
-      "experience": "0",
-      "continuing_education": "10",
-      "renewal_fee": "35",
-      "minimum_age": "",
-      "good_moral_character": "0",
-      "citizenship": "1"
-    },
     {
       "profession": "Speech Language Pathologist",
       "regulation": "License",
