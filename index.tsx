@@ -152,11 +152,11 @@ const loadStalledData = async (): Promise<StalledRow[]> => {
 };
 
 const TENURE_BUCKETS: [string, number, number][] = [
-  ['< 1 yr',  0,   1],
-  ['1-2 yrs', 1,   2],
-  ['2-3 yrs', 2,   3],
-  ['3-5 yrs', 3,   5],
-  ['5+ yrs',  5, Infinity],
+  ['3-4 yrs', 3,   4],
+  ['4-5 yrs', 4,   5],
+  ['5-7 yrs', 5,   7],
+  ['7-10 yrs', 7, 10],
+  ['10+ yrs', 10, Infinity],
 ];
 
 // --- Components ---
@@ -273,7 +273,7 @@ const App = () => {
     const durations: Record<string, number> = Object.fromEntries(TENURE_BUCKETS.map(([l]) => [l, 0]));
 
     stalledByScope.forEach(d => {
-      occMix[d.soc2_name] = (occMix[d.soc2_name] || 0) + d.n_career_stalled_weighted;
+      occMix[d.soc_2019_5_acs_name] = (occMix[d.soc_2019_5_acs_name] || 0) + d.n_career_stalled_weighted;
       const bucket = TENURE_BUCKETS.find(([, lo, hi]) => d.tenure_years >= lo && d.tenure_years < hi);
       if (bucket) durations[bucket[0]] += d.n_career_stalled_weighted;
     });
@@ -626,7 +626,7 @@ const App = () => {
               </div>
               <div class="stat-box">
                 <span class="stat-label">Stalled</span>
-                <span class="stat-val">${stats.st.toLocaleString()}</span>
+                <span class="stat-val">${Math.round(stats.st).toLocaleString()}</span>
               </div>
             </div>
 
@@ -835,7 +835,7 @@ const App = () => {
                   <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{stats.st.toLocaleString()}</span>
                   <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-4 left-1/2 -translate-x-1/2 pointer-events-none">
                     <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">Stalled Workers</div>
-                    <div className="text-xs leading-relaxed">Workers who are either low-wage OR underemployed (or both). This represents the total population of 'stranded' workers who face barriers to economic mobility and career advancement in Tennessee.</div>
+                    <div className="text-xs leading-relaxed">Workers who have remained in the same low-wage job for 3 or more years without meaningful wage progression. These workers are economically stuck — employed, but unable to advance their careers or earnings.</div>
                     <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900"></div>
                   </div>
                 </div>
