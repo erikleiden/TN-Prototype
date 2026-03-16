@@ -1080,25 +1080,13 @@ const App = () => {
                     <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Key Skills to Develop: {targetOccupation} &rarr; {selectedDestination}</p>
                       {selectedSkillGaps.length > 0 ? (
-                        <div className="space-y-3">
-                          {selectedSkillGaps.map((s, i) => {
-                            const maxGap = selectedSkillGaps[0].gap;
-                            const pctGap = Math.round(s.gap * 100);
-                            return (
-                              <div key={i} className="space-y-1">
-                                <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                  <span className="truncate pr-2">{s.skill}</span>
-                                  <span className="tabular-nums text-blue-600">{pctGap}% gap</span>
-                                </div>
-                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-blue-500 rounded-full transition-all duration-700"
-                                    style={{ width: `${maxGap > 0 ? (s.gap / maxGap) * 100 : 0}%` }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div className="space-y-2">
+                          {selectedSkillGaps.slice(0, 5).map((s, i) => (
+                            <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs flex-shrink-0">{i + 1}</div>
+                              <p className="text-sm font-bold text-slate-700">{s.skill}</p>
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <p className="text-sm text-slate-400 italic">No skill gap data available for this transition.</p>
@@ -1129,10 +1117,7 @@ const App = () => {
                           {credentialSkills.map((s, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                               <FileText size={14} className="text-amber-600 flex-shrink-0" />
-                              <div>
-                                <p className="text-sm font-black text-slate-800">{s.skill}</p>
-                                <p className="text-[10px] text-slate-500">{Math.round(s.gap * 100)}% skill gap | {Math.round(s.importance * 100)}% importance in destination</p>
-                              </div>
+                              <p className="text-sm font-black text-slate-800">{s.skill}</p>
                             </div>
                           ))}
                         </div>
@@ -1208,10 +1193,7 @@ const App = () => {
                             <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs flex-shrink-0">{i + 1}</div>
-                                <div>
-                                  <p className="text-sm font-black text-slate-800">{s.skill}</p>
-                                  <p className="text-[10px] text-slate-400">{Math.round(s.importance * 100)}% importance score</p>
-                                </div>
+                                <p className="text-sm font-black text-slate-800">{s.skill}</p>
                               </div>
                               <div className="text-right">
                                 <p className="text-xs font-black text-blue-600">{s.count} of {s.totalDests}</p>
