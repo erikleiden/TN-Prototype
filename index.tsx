@@ -309,10 +309,10 @@ const App = () => {
 
   useEffect(() => {
     if (cohortBreakdowns.occ.length > 0) {
-      // Always reset to top occupation when sector or cohort changes
+      // Always reset to top occupation when sector, cohort, or data changes
       setTargetOccupation(cohortBreakdowns.occ[0][0]);
     }
-  }, [sector, selectedCohort, geography]);
+  }, [sector, selectedCohort, geography, cohortBreakdowns.occ]);
 
   // Reset destination when occupation changes
   useEffect(() => {
