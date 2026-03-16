@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Papa from 'papaparse';
 import TennesseeMap from './src/components/TennesseeMap';
-import pathwaysRaw from './src/data/pathways_data.json';
+import careerPathwaysRaw from './src/data/career_pathways.json';
 
 // --- Types ---
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
@@ -50,33 +50,54 @@ const EDUCATION_ORDER = [
 
 const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
 
-// --- Pathways Data Types & Helpers ---
-interface PathwayRow {
+// --- Career Pathways Data Types ---
+interface TransitionRow {
   origin: string;
   destination: string;
-  wage_gain_dollars: number;
-  wage_gain_pct: number;
-  share_5yr: number;
+  at_year_5: number;
+  origin_share: number;
+  a_median_origin: number;
+  a_median_destination: number;
+  share_stranded_origin: number;
+  share_stranded_destination: number;
+  share_part_time_origin: number;
   similarity: number;
+  similarity_rating: string;
+  wage_gain: number;
+  wage_gain_pct: number;
   diff_strandedness: number;
 }
 
-const pathwaysData = pathwaysRaw as Record<string, Record<string, { transitions: PathwayRow[]; similarity: PathwayRow[]; origin_options: string[] }>>;
+interface SimilarityRow {
+  origin: string;
+  destination: string;
+  a_median_origin: number;
+  a_median_destination: number;
+  share_stranded_origin: number;
+  share_stranded_destination: number;
+  share_part_time_origin: number;
+  similarity: number;
+  similarity_rating: string;
+  wage_gain: number;
+  wage_gain_pct: number;
+  diff_strandedness: number;
+}
 
-const cohortToPathwayKey = (cohort: string): string => {
-  if (cohort === 'Low Wage') return 'low_wage';
-  if (cohort === 'Underemployed') return 'underemployed';
-  return 'stranded';
-};
+interface SkillGapRow {
+  origin: string;
+  destination: string;
+  skill: string;
+  gap: number;
+  importance: number;
+}
 
-const geographyToPathwayKey = (geo: string): string => {
-  if (geo === 'Nashville') return 'Nashville';
-  if (geo === 'Memphis') return 'Memphis';
-  if (geo === 'Knoxville') return 'Knoxville';
-  if (geo === 'Chattanooga') return 'Chattanooga';
-  if (geo === 'Other MSA') return 'Other MSA';
-  return 'All Tennessee';
-};
+interface CareerPathwaysData {
+  transitions: TransitionRow[];
+  similarity: SimilarityRow[];
+  skills: SkillGapRow[];
+}
+
+const careerPathways = careerPathwaysRaw as CareerPathwaysData;
 
 const pluralize = (name: string): string =>
   name.endsWith('s') ? name : name + 's';
@@ -206,6 +227,8 @@ const App = () => {
   const [rawData, setRawData] = useState<DataRow[]>([]);
   const [stalledData, setStalledData] = useState<StalledRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pathwayMode, setPathwayMode] = useState<'transitions' | 'similarity'>('transitions');
+  const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -221,7 +244,7 @@ const App = () => {
     return allSectors.sort();
   }, [rawData]);
 
-  const filteredByScope = useMemo(() => 
+  const filteredByScope = useMemo(() =>
     rawData.filter(d => (geography === 'All' || d.msa_category === geography) && d.NAICS2_NAME === sector),
   [rawData, geography, sector]);
 
@@ -291,153 +314,102 @@ const App = () => {
     }
   }, [sector, selectedCohort, geography]);
 
-  // Analyze cohort characteristics for dynamic recommendations
-  const totalCohort = cohortBreakdowns.edu.reduce((sum, [, val]) => sum + val, 0);
+  // Reset destination when occupation changes
+  useEffect(() => {
+    setSelectedDestination(null);
+    setExpandedRec(null);
+  }, [targetOccupation, pathwayMode]);
 
-  // Age analysis
-  const youngCount = cohortBreakdowns.age.filter(([label]) => label === '18-24' || label === '25-34').reduce((sum, [, val]) => sum + val, 0);
-  const matureCount = cohortBreakdowns.age.filter(([label]) => label === '45-54' || label === '55-64').reduce((sum, [, val]) => sum + val, 0);
-  const isYoungCohort = youngCount / totalCohort > 0.5;
-  const isMatureCohort = matureCount / totalCohort > 0.5;
+  // --- Section 03: Occupation diagnostics from career pathways data ---
+  const occupationDiagnostics = useMemo(() => {
+    if (!targetOccupation) return null;
+    // Look up from transitions first, fall back to similarity
+    const transRow = careerPathways.transitions.find(r => r.origin === targetOccupation);
+    const simRow = careerPathways.similarity.find(r => r.origin === targetOccupation);
+    const row = transRow || simRow;
+    if (!row) return null;
+    return {
+      strandedShare: row.share_stranded_origin,
+      medianWage: row.a_median_origin,
+      partTimeShare: row.share_part_time_origin,
+    };
+  }, [targetOccupation]);
 
-  // Education analysis
-  const lowEduCount = cohortBreakdowns.edu.filter(([label]) => label === 'Less than HS' || label === 'HS diploma/GED').reduce((sum, [, val]) => sum + val, 0);
-  const highEduCount = cohortBreakdowns.edu.filter(([label]) => label === "Bachelor's degree" || label === 'Graduate degree').reduce((sum, [, val]) => sum + val, 0);
-  const someCollegeCount = cohortBreakdowns.edu.find(([label]) => label === 'Some college')?.[1] || 0;
-  const isLowEducation = lowEduCount / totalCohort > 0.6;
-  const isHighEducation = highEduCount / totalCohort > 0.4;
-  const hasSomeCollege = someCollegeCount / totalCohort > 0.15;
-
-  // Sector-specific characteristics
-  const isManufacturing = sector.includes('Manufacturing');
-  const isHealthcare = sector.includes('Health');
-  const isRetail = sector.includes('Retail') || sector.includes('Food');
-  const isConstruction = sector.includes('Construction');
-  const isProfessional = sector.includes('Professional') || sector.includes('Finance') || sector.includes('Information');
-  const isEducation = sector.includes('Educational');
-
-  // Build dynamic recommendations based on cohort profile
-  const recommendations: { title: string; advice: string }[] = [];
-
-  // Recommendation 1: Age-appropriate entry strategy
-  if (isYoungCohort) {
-    recommendations.push({
-      title: "Strategy: Youth Apprenticeship & Pre-Apprenticeship Programs",
-      advice: `With over half of ${pluralize(targetOccupation || "")} in ${geography === 'All' ? 'Tennessee' : geography} under age 35, registered apprenticeship programs offer a proven pathway. Partner with ${sector} employers to create earn-while-you-learn pathways that combine on-the-job training with classroom instruction. Tennessee Reconnect and Drive to 55 initiatives provide tuition support for participants under 25, enabling credential attainment while earning competitive wages.`
-    });
-  } else if (isMatureCohort) {
-    recommendations.push({
-      title: "Strategy: Mid-Career Upskilling & Re-Credentialing",
-      advice: `Many ${pluralize(targetOccupation || "")} in this cohort (45+) have extensive work experience but lack formal credentials. Implement Prior Learning Assessment (PLA) programs that award college credit for work experience, combined with accelerated competency-based education to fast-track credential completion. Tennessee Reconnect offers tuition-free community college for adults, making this financially viable.`
-    });
-  } else {
-    recommendations.push({
-      title: "Strategy: Career Advancement Pathways",
-      advice: `Focus on creating clear advancement pathways for mid-career ${pluralize(targetOccupation || "")} in ${sector}. Develop stackable credentials that allow workers to incrementally build skills while remaining employed. Partner with employers to create internal promotion pathways that recognize credential attainment with wage increases.`
-    });
-  }
-
-  // Recommendation 2: Education-appropriate intervention
-  if (isLowEducation) {
-    recommendations.push({
-      title: "Strategy: Foundational Skills & Industry-Recognized Credentials",
-      advice: `With ${Math.round(lowEduCount / totalCohort * 100)}% of ${pluralize(targetOccupation || "")} having a high school diploma or less, prioritize short-term, industry-recognized credentials that lead directly to employment. Focus on OSHA certifications, forklift operation, CDL training, and other credentials that have immediate labor market value in ${geography === 'All' ? 'Tennessee' : geography}'s ${sector} sector. Integrate adult basic education for those needing GED completion.`
-    });
-  } else if (isHighEducation) {
-    recommendations.push({
-      title: "Strategy: Advanced Credential Stacking & Management Pathways",
-      advice: `With ${Math.round(highEduCount / totalCohort * 100)}% holding bachelor's degrees or higher, focus on management training, Six Sigma Black Belt certification, and professional certifications (PMP, SHRM-CP) that position ${pluralize(targetOccupation || "")} for supervisory roles. For ${selectedCohort} workers with degrees, the barrier is often lack of management experience or industry-specific advanced credentials rather than education.`
-    });
-  } else {
-    recommendations.push({
-      title: "Strategy: Flexible Postsecondary Completion & Certificate Programs",
-      advice: `Support ${pluralize(targetOccupation || "")} in completing associate degrees or industry certificates through flexible delivery models (evening, weekend, online). Tennessee Colleges of Applied Technology (TCATs) offer accelerated programs aligned to ${sector} industry needs with job placement rates exceeding 85%. Emphasize stackable credentials that provide immediate wage gains while progressing toward degree completion.`
-    });
-  }
-
-  // Recommendation 3: Sector-specific intervention
-  if (isManufacturing) {
-    recommendations.push({
-      title: "Strategy: Advanced Manufacturing Skills & Automation Training",
-      advice: `Tennessee's ${geography === 'All' ? 'statewide' : geography} manufacturing sector increasingly requires CNC machining, robotics maintenance, and industrial automation skills. Target ${pluralize(targetOccupation || "")} for training in FANUC robotics certification, Siemens mechatronics, and Industry 4.0 competencies. Partner with manufacturers to create cohort-based training that guarantees job placement upon completion with $5-8/hour wage premiums.`
-    });
-  } else if (isHealthcare) {
-    recommendations.push({
-      title: "Strategy: Healthcare Career Ladders & Clinical Certifications",
-      advice: `Create healthcare career pathways for ${pluralize(targetOccupation || "")} moving from entry-level to clinical roles. Support CNA-to-LPN and LPN-to-RN bridge programs, or lateral moves into medical coding, pharmacy tech, or surgical tech roles. Tennessee's healthcare sector projects 15% growth through 2030, with median wages 40% higher than current ${selectedCohort} workers in ${geography === 'All' ? 'the state' : geography}.`
-    });
-  } else if (isRetail) {
-    recommendations.push({
-      title: "Strategy: Digital Commerce & Customer Experience Specialization",
-      advice: `Retail and food service workers have transferable customer service skills valued in many sectors. Support ${pluralize(targetOccupation || "")} in transitioning to higher-wage roles in sales operations, e-commerce logistics, customer success management, or hospitality management. Micro-credentials in Salesforce, digital marketing, and supply chain coordination can unlock 30-50% wage increases.`
-    });
-  } else if (isConstruction) {
-    recommendations.push({
-      title: "Strategy: Skilled Trades Credentialing & Supervisory Development",
-      advice: `Construction offers clear pathways from apprentice to journeyman to master craftsperson. Support ${pluralize(targetOccupation || "")} in obtaining electrical, plumbing, or HVAC licensure through Tennessee's registered apprenticeship programs. For experienced workers, focus on supervisor/foreman training, OSHA 30-hour, and project management fundamentals that lead to superintendent roles with 50%+ wage premiums.`
-    });
-  } else if (isProfessional) {
-    recommendations.push({
-      title: "Strategy: Technology Upskilling & Professional Certification",
-      advice: `Professional services increasingly require digital literacy and technical specializations. Target ${pluralize(targetOccupation || "")} for training in data analytics (SQL, Tableau, Power BI), cloud platforms (AWS, Azure), project management (PMP, Agile), or specialized software relevant to ${sector}. These credentials can unlock remote work opportunities and salary increases of 25-40% in ${geography === 'All' ? 'Tennessee' : geography}.`
-    });
-  } else if (isEducation) {
-    recommendations.push({
-      title: "Strategy: Educational Support Professional Development",
-      advice: `Support ${pluralize(targetOccupation || "")} in advancing from paraprofessional to licensed teacher roles through Tennessee's Grow Your Own teacher programs. Alternative licensure pathways and tuition assistance for bachelor's degree completion can transition classroom aides, substitute teachers, and support staff into full teaching positions with median salaries exceeding $52,000 in ${geography === 'All' ? 'Tennessee' : geography}.`
-    });
-  } else {
-    recommendations.push({
-      title: "Strategy: Cross-Sector Skills Transfer & Industry Switching",
-      advice: `Identify transferable skills of ${pluralize(targetOccupation || "")} that are valued in higher-wage sectors. For example, operations roles transfer to logistics management, customer service transfers to healthcare patient experience, and administrative skills transfer to professional services. Provide career navigation support to help workers identify viable transitions with minimal retraining.`
-    });
-  }
-
-  // Recommendation 4: College completion (conditional)
-  if (hasSomeCollege) {
-    recommendations.push({
-      title: "Strategy: College Completion & Credit for Prior Learning",
-      advice: `${Math.round(someCollegeCount / totalCohort * 100)}% of ${pluralize(targetOccupation || "")} in ${geography === 'All' ? 'Tennessee' : geography} have some college but no degree. Implement Tennessee Reconnect re-enrollment initiatives, reverse transfer programs that award associate degrees for accumulated credits, and Prior Learning Assessment to accelerate completion. Workers with associate degrees earn 20% more than those with some college; bachelor's degrees provide 65% wage premiums.`
-    });
-  }
-
-  // Recommendation 5: Internal mobility pathways (always relevant)
-  recommendations.push({
-    title: "Strategy: Employer-Led Internal Mobility Systems",
-    advice: `Work with ${sector} employers in ${geography === 'All' ? 'Tennessee' : geography} to develop transparent internal career pathways for ${pluralize(targetOccupation || "")}. Implement skills-based progression frameworks where workers can advance through documented skill attainment rather than degree requirements. Successful models include tuition assistance (up to $5,250/year tax-free), paid time for training, and guaranteed wage increases upon credential completion.`
-  });
-
-  // Recommendation 6: Entrepreneurship (for specific occupations)
-  const entrepreneurshipOccupations = ['Carpenters', 'Electricians', 'Plumbers', 'HVAC', 'Hair', 'Cosmetologists', 'Photographers', 'Designers', 'Drivers', 'Mechanics', 'Repair'];
-  const isEntrepreneurshipViable = entrepreneurshipOccupations.some(occ => (targetOccupation || '').includes(occ));
-
-  if (isEntrepreneurshipViable) {
-    recommendations.push({
-      title: "Strategy: Self-Employment & Microbusiness Development",
-      advice: `Many ${pluralize(targetOccupation || "")} have skills suited for independent contracting or small business ownership. Provide access to Tennessee Small Business Development Centers (TSBDC) for business planning, SCORE mentoring, and microfinance through community lenders. Self-employed skilled workers in ${sector} can earn 20-50% more than W-2 employees, with greater schedule flexibility. Support LLC formation, insurance procurement, and digital marketing training.`
-    });
-  }
-
-  // --- Pathways Data Integration ---
-  const matchedPathways = useMemo((): PathwayRow[] => {
+  // --- Section 04: Pathway destinations ---
+  const destinationPathways = useMemo(() => {
     if (!targetOccupation) return [];
-    const strandKey = cohortToPathwayKey(selectedCohort);
-    const geoKey = geographyToPathwayKey(geography);
-    const geoData = pathwaysData[strandKey]?.[geoKey] ?? pathwaysData[strandKey]?.['All Tennessee'];
-    if (!geoData) return [];
-    const rows = geoData.transitions?.filter(r => r.origin === targetOccupation) ?? [];
-    // Sort by wage gain descending
-    return [...rows].sort((a, b) => b.wage_gain_dollars - a.wage_gain_dollars);
-  }, [targetOccupation, selectedCohort, geography]);
+    if (pathwayMode === 'transitions') {
+      return careerPathways.transitions
+        .filter(r => r.origin === targetOccupation)
+        .sort((a, b) => b.at_year_5 - a.at_year_5)
+        .slice(0, 5);
+    } else {
+      return careerPathways.similarity
+        .filter(r => r.origin === targetOccupation)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5)
+        .map(r => ({ ...r, at_year_5: 0 } as TransitionRow)); // similarity rows don't have at_year_5
+    }
+  }, [targetOccupation, pathwayMode]);
 
-  const pathwayStats = useMemo(() => {
-    if (matchedPathways.length === 0) return null;
-    const avgWagePct = matchedPathways.reduce((s, r) => s + r.wage_gain_pct, 0) / matchedPathways.length;
-    const maxWageDollars = Math.max(...matchedPathways.map(r => r.wage_gain_dollars));
-    const avgStrandReduction = matchedPathways.reduce((s, r) => s + r.diff_strandedness, 0) / matchedPathways.length;
-    const bestStrandReduction = Math.min(...matchedPathways.map(r => r.diff_strandedness));
-    return { avgWagePct, maxWageDollars, avgStrandReduction, bestStrandReduction, count: matchedPathways.length };
-  }, [matchedPathways]);
+  // --- Section 04: Skill gaps for selected origin -> destination ---
+  const selectedSkillGaps = useMemo(() => {
+    if (!targetOccupation || !selectedDestination) return [];
+    return careerPathways.skills
+      .filter(r => r.origin === targetOccupation && r.destination === selectedDestination && r.gap > 0)
+      .sort((a, b) => b.gap - a.gap)
+      .slice(0, 10);
+  }, [targetOccupation, selectedDestination]);
+
+  // --- Section 04: Credential-related skills ---
+  const credentialSkills = useMemo(() => {
+    const credentialKeywords = ['Licens', 'Certif', 'Degree', 'CPA', 'RN', 'CDL', 'OSHA', 'Board', 'Accredit', 'Registr'];
+    return selectedSkillGaps.filter(s =>
+      credentialKeywords.some(kw => s.skill.toLowerCase().includes(kw.toLowerCase()))
+    );
+  }, [selectedSkillGaps]);
+
+  // --- Section 04: Cross-pathway skill acquisition ---
+  const crossPathwaySkills = useMemo(() => {
+    if (!targetOccupation) return [];
+    // Get all destinations from both transitions and similarity for this origin
+    const allTransDests = careerPathways.transitions.filter(r => r.origin === targetOccupation).map(r => r.destination);
+    const allSimDests = careerPathways.similarity.filter(r => r.origin === targetOccupation).map(r => r.destination);
+    const allDests = Array.from(new Set([...allTransDests, ...allSimDests]));
+    const totalDestCount = allDests.length;
+
+    // Get all skill gaps for this origin across all destinations
+    const allSkillGaps = careerPathways.skills.filter(
+      r => r.origin === targetOccupation && r.gap > 0 && allDests.includes(r.destination)
+    );
+
+    // Count how many destinations each skill appears in, and track max importance
+    const skillMap: Record<string, { count: number; maxImportance: number }> = {};
+    allSkillGaps.forEach(s => {
+      if (!skillMap[s.skill]) {
+        skillMap[s.skill] = { count: 0, maxImportance: 0 };
+      }
+      skillMap[s.skill].count++;
+      skillMap[s.skill].maxImportance = Math.max(skillMap[s.skill].maxImportance, s.importance);
+    });
+
+    return Object.entries(skillMap)
+      .sort((a, b) => b[1].count - a[1].count || b[1].maxImportance - a[1].maxImportance)
+      .slice(0, 5)
+      .map(([skill, data]) => ({ skill, count: data.count, totalDests: totalDestCount, importance: data.maxImportance }));
+  }, [targetOccupation]);
+
+  // --- Selected destination row ---
+  const selectedDestRow = useMemo(() => {
+    if (!selectedDestination || !targetOccupation) return null;
+    const transRow = careerPathways.transitions.find(
+      r => r.origin === targetOccupation && r.destination === selectedDestination
+    );
+    const simRow = careerPathways.similarity.find(
+      r => r.origin === targetOccupation && r.destination === selectedDestination
+    );
+    return transRow || simRow || null;
+  }, [targetOccupation, selectedDestination]);
 
   const handleExportBrief = () => {
     const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `
@@ -655,8 +627,8 @@ const App = () => {
           <div class="page">
             <div class="header">
               <div>
-                <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Intervention Roadmap</p>
-                <h1>Strategic Recommendations</h1>
+                <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Career Pathways</p>
+                <h1>Destination Analysis</h1>
               </div>
               <div class="meta">
                 Focus Occupation: ${targetOccupation}<br>
@@ -665,23 +637,16 @@ const App = () => {
             </div>
 
             <p style="font-size: 13px; line-height: 1.6; color: #334155; margin: 0 0 30px 0;">
-              The following interventions are optimized for <strong>${targetOccupation}</strong> populations within <strong>${geography === 'All' ? 'Tennessee' : geography}</strong>. BGI analysis suggests that addressing these barriers for the <strong>${selectedCohort}</strong> cohort offers the most significant regional economic lift.
+              Career pathway analysis for <strong>${targetOccupation}</strong> within <strong>${geography === 'All' ? 'Tennessee' : geography}</strong>. Top destination occupations identified through observed transitions and skill similarity scoring.
             </p>
 
-            ${recommendations.map((r, i) => `
+            ${destinationPathways.map((p, i) => `
               <div class="rec-card">
-                <h3>Priority Recommendation ${String(i + 1).padStart(2, '0')}</h3>
-                <p class="rec-title">${r.title}</p>
-                <p class="rec-advice">${r.advice}</p>
+                <h3>Destination ${String(i + 1).padStart(2, '0')}</h3>
+                <p class="rec-title">${p.destination}</p>
+                <p class="rec-advice">Wage Gain: +$${p.wage_gain.toLocaleString()} (${Math.round(p.wage_gain_pct * 100)}%) | Similarity: ${Math.round(p.similarity * 100)}% | Strandedness Change: ${Math.round(p.diff_strandedness * 100)}%</p>
               </div>
             `).join('')}
-
-            <div style="margin-top: 28px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
-              <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; font-weight: 800; margin: 0 0 12px 0;">Economic Impact Forecast</h3>
-              <p style="font-size: 12px; color: #64748b; line-height: 1.6; margin: 0;">
-                Successfully moving individuals in this cohort through the recommended pathways is projected to reduce regional labor churn and stabilize middle-skill supply chains across the Tennessee ${sector} sector.
-              </p>
-            </div>
 
             <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
           </div>
@@ -727,7 +692,7 @@ const App = () => {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 md:px-10 py-8 md:py-12 space-y-12 md:space-y-24">
-        
+
         {/* Step 1: Selection */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
@@ -737,7 +702,7 @@ const App = () => {
               <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Baseline Diagnostic Definition</p>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-7">
               <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
@@ -756,7 +721,7 @@ const App = () => {
                   <Briefcase size={14} className="text-blue-500" /> NAICS Sector
                 </label>
                 <div className="relative">
-                  <select 
+                  <select
                     value={sector}
                     onChange={(e) => setSector(e.target.value)}
                     className="w-full bg-[#F8FAFC] border-2 border-slate-100 rounded-[24px] px-8 py-5 text-sm font-black appearance-none focus:border-blue-500 transition-all outline-none pr-16"
@@ -791,7 +756,7 @@ const App = () => {
               <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Cohort Identification & Intersection</p>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
               <div className="relative w-64 h-64 sm:w-80 sm:h-80">
@@ -841,7 +806,7 @@ const App = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
               {selectedCohort === 'Stalled' ? (
@@ -905,7 +870,7 @@ const App = () => {
           </div>
         </section>
 
-        {/* Step 3: Deep Dive */}
+        {/* Step 3: Occupational Selection */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">03</div>
@@ -914,7 +879,7 @@ const App = () => {
               <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Drill-Down to Targeted Intervention Nodes</p>
             </div>
           </div>
-          
+
           <div className="bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
               {cohortBreakdowns.occ.slice(0, 10).map(([occ, val]) => (
@@ -935,190 +900,395 @@ const App = () => {
                 </div>
               ))}
             </div>
+
+            {/* Occupation Diagnostic Panel */}
+            {targetOccupation && occupationDiagnostics && (
+              <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-slate-100">
+                <p className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2">
+                  <Target size={14} className="text-blue-500" /> Occupation Diagnostics: {targetOccupation}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
+                    <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Stranded Share</p>
+                    <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.strandedShare * 100).toFixed(1)}%</p>
+                    <p className="text-[9px] text-slate-400 mt-1">of workers in this occupation are stranded</p>
+                  </div>
+                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
+                    <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Median Wage</p>
+                    <p className="text-xl md:text-2xl font-black text-blue-900">${occupationDiagnostics.medianWage.toLocaleString()}</p>
+                    <p className="text-[9px] text-slate-400 mt-1">annual median for this occupation</p>
+                  </div>
+                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
+                    <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Part-Time Share</p>
+                    <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.partTimeShare * 100).toFixed(1)}%</p>
+                    <p className="text-[9px] text-slate-400 mt-1">working part-time in this occupation</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* Step 4: Roadmap */}
+        {/* Step 4: Policy Roadmap — Career Pathways */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">04</div>
             <div>
               <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">Policy Roadmap</h2>
-              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Strategic Interventions for Regional Lift</p>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Career Pathways & Strategic Interventions</p>
             </div>
           </div>
-          
-          {/* Proven Career Pathways — data-driven section */}
-          {matchedPathways.length > 0 && (
-            <div className="mb-8 md:mb-12">
-              <div className="flex items-center gap-3 mb-4 md:mb-6">
+
+          {/* 4a. Pathway Mode Selector */}
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-3 hidden sm:block">Pathway Mode</p>
+            <div className="inline-flex rounded-full bg-slate-100 p-1 border border-slate-200">
+              <button
+                onClick={() => setPathwayMode('transitions')}
+                className={`px-4 md:px-6 py-2 md:py-2.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${
+                  pathwayMode === 'transitions'
+                    ? 'bg-blue-900 text-white shadow-lg'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Historically Common Transitions
+              </button>
+              <button
+                onClick={() => setPathwayMode('similarity')}
+                className={`px-4 md:px-6 py-2 md:py-2.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${
+                  pathwayMode === 'similarity'
+                    ? 'bg-blue-900 text-white shadow-lg'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Jobs with Highly Similar Skills
+              </button>
+            </div>
+          </div>
+
+          {/* 4b. Destination Pathways Panel */}
+          {targetOccupation && (
+            <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+              <div className="flex items-center gap-3 mb-6">
                 <ArrowRight size={16} className="text-amber-500 flex-shrink-0" />
                 <p className="text-[10px] md:text-[11px] font-black uppercase tracking-widest text-slate-500">
-                  Proven Career Pathways for {pluralize(targetOccupation || "")} &mdash; {geography === 'All' ? 'All Tennessee' : geography}
+                  {pathwayMode === 'transitions' ? 'Top Observed Transitions' : 'Most Skill-Similar Occupations'} for {pluralize(targetOccupation)}
                 </p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
-                {matchedPathways.slice(0, 6).map((p, i) => {
-                  const wagePct = Math.round(p.wage_gain_pct * 100);
-                  const strandPct = Math.round(Math.abs(p.diff_strandedness) * 100);
-                  const isTopWage = i === 0;
-                  return (
-                    <div
-                      key={i}
-                      className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border-2 transition-all ${
-                        isTopWage
-                          ? 'bg-blue-50 border-blue-300 shadow-md'
-                          : 'bg-white border-slate-100 hover:border-blue-200 hover:shadow-sm'
-                      }`}
-                    >
-                      {isTopWage && (
-                        <span className="inline-block text-[8px] font-black uppercase tracking-widest bg-blue-600 text-white px-2 py-0.5 rounded-full mb-2">
-                          Top Wage Gain
-                        </span>
-                      )}
-                      <p className="text-xs md:text-sm font-black text-slate-800 leading-snug mb-3">{p.destination}</p>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] md:text-[10px] font-bold uppercase text-slate-400 tracking-widest">Wage Gain</span>
-                          <span className="text-xs md:text-sm font-black text-emerald-600">
-                            +${p.wage_gain_dollars.toLocaleString()} <span className="font-bold text-emerald-500">({wagePct > 0 ? `+${wagePct}` : wagePct}%)</span>
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] md:text-[10px] font-bold uppercase text-slate-400 tracking-widest">Less Stranded</span>
-                          <span className="text-xs md:text-sm font-black text-blue-600">{strandPct}% reduction</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] md:text-[10px] font-bold uppercase text-slate-400 tracking-widest">Similarity</span>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-amber-400 rounded-full" style={{ width: `${Math.round(p.similarity * 100)}%` }} />
+
+              {destinationPathways.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 md:gap-4">
+                  {destinationPathways.map((p, i) => {
+                    const wagePct = Math.round(p.wage_gain_pct * 100);
+                    const strandPct = Math.round(p.diff_strandedness * 100);
+                    const isSelected = selectedDestination === p.destination;
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => setSelectedDestination(p.destination)}
+                        className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border-2 cursor-pointer transition-all duration-300 ${
+                          isSelected
+                            ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1'
+                            : 'bg-white border-slate-100 hover:border-blue-300 hover:shadow-sm'
+                        }`}
+                      >
+                        <p className={`text-xs md:text-sm font-black leading-snug mb-3 ${isSelected ? 'text-blue-200' : 'text-slate-800'}`}>{p.destination}</p>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Wage Gain</span>
+                            <span className={`text-[11px] md:text-xs font-black ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`}>
+                              +${p.wage_gain.toLocaleString()} ({wagePct > 0 ? `+${wagePct}` : wagePct}%)
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Strandedness</span>
+                            <span className={`text-[11px] md:text-xs font-black ${strandPct < 0 ? (isSelected ? 'text-emerald-300' : 'text-emerald-600') : (isSelected ? 'text-red-300' : 'text-red-500')}`}>
+                              {strandPct < 0 ? `${strandPct}%` : `+${strandPct}%`}
+                            </span>
+                          </div>
+                          {pathwayMode === 'transitions' && p.at_year_5 > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Observed</span>
+                              <span className={`text-[11px] md:text-xs font-black ${isSelected ? 'text-white' : 'text-slate-700'}`}>{p.at_year_5} workers</span>
                             </div>
-                            <span className="text-[10px] font-bold text-slate-500">{Math.round(p.similarity * 100)}%</span>
+                          )}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Similarity</span>
+                              <span className={`text-[10px] font-bold ${isSelected ? 'text-blue-300' : 'text-slate-500'}`}>{Math.round(p.similarity * 100)}%</span>
+                            </div>
+                            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isSelected ? 'bg-blue-800' : 'bg-slate-100'}`}>
+                              <div className={`h-full rounded-full ${isSelected ? 'bg-amber-400' : 'bg-amber-400'}`} style={{ width: `${Math.round(p.similarity * 100)}%` }} />
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-sm text-slate-400 font-bold">No pathway data available for this occupation in the selected mode.</p>
+                  <p className="text-xs text-slate-300 mt-2">Try switching to {pathwayMode === 'transitions' ? '"Jobs with Highly Similar Skills"' : '"Historically Common Transitions"'} mode.</p>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="grid grid-cols-12 gap-10">
-            <div className="col-span-12 lg:col-span-7 space-y-4 md:space-y-6">
-              {recommendations.map((rec, i) => (
+          {/* 4c. Strategy Recommendations (when destination is selected) */}
+          {targetOccupation && selectedDestination && selectedDestRow && (
+            <div className="grid grid-cols-12 gap-10">
+              <div className="col-span-12 lg:col-span-7 space-y-4 md:space-y-6">
+
+                {/* Strategy 1: Career Advancement Pathways (Skill Gaps) */}
                 <div
-                  key={i}
-                  onClick={() => setExpandedRec(expandedRec === i ? null : i)}
+                  onClick={() => setExpandedRec(expandedRec === 0 ? null : 0)}
                   className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
-                    expandedRec === i ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
+                    expandedRec === 0 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <h3 className={`text-sm md:text-lg font-black uppercase tracking-tight ${expandedRec === i ? 'text-blue-900' : 'text-slate-500'}`}>{rec.title}</h3>
-                    <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === i ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
+                    <div className="flex items-center gap-3">
+                      <BarChart3 size={18} className={expandedRec === 0 ? 'text-blue-600' : 'text-slate-300'} />
+                      <h3 className={`text-sm md:text-lg font-black uppercase tracking-tight ${expandedRec === 0 ? 'text-blue-900' : 'text-slate-500'}`}>Strategy: Career Advancement Pathways</h3>
+                    </div>
+                    <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 0 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
-                  {expandedRec === i && (
+                  {expandedRec === 0 && (
                     <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
-                      <p className="text-sm md:text-base text-slate-600 leading-relaxed font-medium">{rec.advice}</p>
-                      {/* Inline top pathway callout when data available */}
-                      {matchedPathways.length > 0 && (
-                        <div className="mt-4 md:mt-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                          <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-blue-400 mb-2">Highest-Impact Pathway for {pluralize(targetOccupation || "")}</p>
-                          <p className="text-sm font-black text-blue-900">{matchedPathways[0].destination}</p>
-                          <p className="text-xs text-blue-700 mt-1 font-medium">
-                            +${matchedPathways[0].wage_gain_dollars.toLocaleString()} wage gain &nbsp;&bull;&nbsp; {Math.round(Math.abs(matchedPathways[0].diff_strandedness) * 100)}% less stranded &nbsp;&bull;&nbsp; {Math.round(matchedPathways[0].similarity * 100)}% skill similarity
-                          </p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Key Skills to Develop: {targetOccupation} &rarr; {selectedDestination}</p>
+                      {selectedSkillGaps.length > 0 ? (
+                        <div className="space-y-3">
+                          {selectedSkillGaps.map((s, i) => {
+                            const maxGap = selectedSkillGaps[0].gap;
+                            return (
+                              <div key={i} className="space-y-1">
+                                <div className="flex justify-between text-[10px] font-bold text-slate-500">
+                                  <span className="truncate pr-2">{s.skill}</span>
+                                  <span className="tabular-nums text-blue-600">Gap: {s.gap.toFixed(2)}</span>
+                                </div>
+                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500 rounded-full transition-all duration-700"
+                                    style={{ width: `${maxGap > 0 ? (s.gap / maxGap) * 100 : 0}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No skill gap data available for this transition.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Strategy 2: Credentials & Licensing */}
+                <div
+                  onClick={() => setExpandedRec(expandedRec === 1 ? null : 1)}
+                  className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
+                    expandedRec === 1 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <GraduationCap size={18} className={expandedRec === 1 ? 'text-blue-600' : 'text-slate-300'} />
+                      <h3 className={`text-sm md:text-lg font-black uppercase tracking-tight ${expandedRec === 1 ? 'text-blue-900' : 'text-slate-500'}`}>Strategy: Credentials & Licensing</h3>
+                    </div>
+                    <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 1 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
+                  </div>
+                  {expandedRec === 1 && (
+                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                      {credentialSkills.length > 0 ? (
+                        <div className="space-y-3">
+                          <p className="text-sm text-slate-600 font-medium mb-4">The following credential-related skills were identified as gaps for this transition:</p>
+                          {credentialSkills.map((s, i) => (
+                            <div key={i} className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                              <FileText size={14} className="text-amber-600 flex-shrink-0" />
+                              <div>
+                                <p className="text-sm font-black text-slate-800">{s.skill}</p>
+                                <p className="text-[10px] text-slate-500">Gap: {s.gap.toFixed(2)} | Importance: {s.importance.toFixed(2)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <p className="text-sm text-slate-600 font-medium">No specific credential or licensing requirements were identified in the skill gap analysis for this transition.</p>
+                          <p className="text-xs text-slate-400 mt-2">We recommend checking Tennessee state licensing boards and industry certification bodies for occupation-specific requirements for {selectedDestination}.</p>
                         </div>
                       )}
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
 
-            <div className="col-span-12 lg:col-span-5">
-              <div className="bg-[#1E3A8A] text-white p-6 md:p-12 rounded-[32px] md:rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-4 md:border-t-8 border-amber-500">
-                <div className="relative z-10">
-                  <h3 className="text-xl md:text-2xl font-black leading-tight mb-6 md:mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
-
-                  <div className="mb-6 md:mb-10 space-y-3 md:space-y-4">
-                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Region</span>
-                      <span className="font-bold text-xs md:text-sm">{geography}</span>
+                {/* Strategy 3: Employer Mobility Within Occupation */}
+                <div
+                  onClick={() => setExpandedRec(expandedRec === 2 ? null : 2)}
+                  className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
+                    expandedRec === 2 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Briefcase size={18} className={expandedRec === 2 ? 'text-blue-600' : 'text-slate-300'} />
+                      <h3 className={`text-sm md:text-lg font-black uppercase tracking-tight ${expandedRec === 2 ? 'text-blue-900' : 'text-slate-500'}`}>Strategy: Employer Mobility Within Occupation</h3>
                     </div>
-                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Sector</span>
-                      <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{sector}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Occupation</span>
-                      <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{targetOccupation}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                      <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Strandedness</span>
-                      <span className="font-bold text-xs md:text-sm">{selectedCohort}</span>
-                    </div>
-                    {matchedPathways.length > 0 && (
-                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Pathways Found</span>
-                        <span className="font-bold text-xs md:text-sm text-amber-400">{matchedPathways.length} options</span>
-                      </div>
-                    )}
+                    <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 2 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
-
-                  <div className="space-y-6 md:space-y-10">
-                    <div className="flex items-center gap-4 md:gap-8">
-                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
-                        <TrendingUp size={24} className="md:w-7 md:h-7" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">
-                          {pathwayStats ? 'Max Wage Gain (Top Pathway)' : 'Potential Wage Uplift Range'}
-                        </p>
-                        <p className="text-2xl md:text-3xl font-black">
-                          {pathwayStats
-                            ? `+$${pathwayStats.maxWageDollars.toLocaleString()}`
-                            : '+18% – 25% Avg.'}
-                        </p>
-                        {pathwayStats && (
-                          <p className="text-[10px] text-blue-300 mt-1">
-                            Avg. across {pathwayStats.count} pathways: +{Math.round(pathwayStats.avgWagePct * 100)}%
+                  {expandedRec === 2 && (
+                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                      {occupationDiagnostics && (
+                        <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
+                          <p className="text-sm md:text-base text-slate-700 leading-relaxed font-medium">
+                            Not all {pluralize(targetOccupation)} are stranded &mdash; <span className="font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</span> in this occupation are not classified as stranded. For workers who want to stay in their current field, switching employers can unlock wage growth. Internal mobility and job-hopping within the same occupation is a viable strategy.
                           </p>
-                        )}
+                          <div className="mt-4 flex items-center gap-6">
+                            <div>
+                              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Non-Stranded Rate</p>
+                              <p className="text-lg font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Current Median Wage</p>
+                              <p className="text-lg font-black text-blue-900">${occupationDiagnostics.medianWage.toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Strategy 4: Cross-Pathway Skill Acquisition */}
+                <div
+                  onClick={() => setExpandedRec(expandedRec === 3 ? null : 3)}
+                  className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
+                    expandedRec === 3 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Layers size={18} className={expandedRec === 3 ? 'text-blue-600' : 'text-slate-300'} />
+                      <h3 className={`text-sm md:text-lg font-black uppercase tracking-tight ${expandedRec === 3 ? 'text-blue-900' : 'text-slate-500'}`}>Strategy: Cross-Pathway Skill Acquisition</h3>
+                    </div>
+                    <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 3 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
+                  </div>
+                  {expandedRec === 3 && (
+                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                      <p className="text-sm text-slate-600 font-medium mb-4">
+                        Skills that appear as gaps across multiple destination pathways for {pluralize(targetOccupation)}. Investing in these skills maximizes career flexibility.
+                      </p>
+                      {crossPathwaySkills.length > 0 ? (
+                        <div className="space-y-3">
+                          {crossPathwaySkills.map((s, i) => (
+                            <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs flex-shrink-0">{i + 1}</div>
+                                <div>
+                                  <p className="text-sm font-black text-slate-800">{s.skill}</p>
+                                  <p className="text-[10px] text-slate-400">Importance: {s.importance.toFixed(2)}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs font-black text-blue-600">{s.count} of {s.totalDests}</p>
+                                <p className="text-[9px] text-slate-400 uppercase tracking-widest">pathways</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No cross-pathway skill data available for this occupation.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Target Group Profile Sidebar */}
+              <div className="col-span-12 lg:col-span-5">
+                <div className="bg-[#1E3A8A] text-white p-6 md:p-12 rounded-[32px] md:rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-4 md:border-t-8 border-amber-500">
+                  <div className="relative z-10">
+                    <h3 className="text-xl md:text-2xl font-black leading-tight mb-6 md:mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
+
+                    <div className="mb-6 md:mb-10 space-y-3 md:space-y-4">
+                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Region</span>
+                        <span className="font-bold text-xs md:text-sm">{geography}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Sector</span>
+                        <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{sector}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Origin</span>
+                        <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{targetOccupation}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Destination</span>
+                        <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px] text-amber-400">{selectedDestination}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Cohort</span>
+                        <span className="font-bold text-xs md:text-sm">{selectedCohort}</span>
                       </div>
                     </div>
-                    {pathwayStats && (
+
+                    <div className="space-y-6 md:space-y-10">
+                      <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                          <TrendingUp size={24} className="md:w-7 md:h-7" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Wage Gain</p>
+                          <p className="text-2xl md:text-3xl font-black">+${selectedDestRow.wage_gain.toLocaleString()}</p>
+                          <p className="text-[10px] text-blue-300 mt-1">
+                            {Math.round(selectedDestRow.wage_gain_pct * 100)}% increase &bull; To ${selectedDestRow.a_median_destination.toLocaleString()}/yr
+                          </p>
+                        </div>
+                      </div>
                       <div className="flex items-center gap-4 md:gap-8">
                         <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
                           <Target size={24} className="md:w-7 md:h-7" />
                         </div>
                         <div>
-                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Strandedness Reduction</p>
-                          <p className="text-2xl md:text-3xl font-black">
-                            {Math.round(Math.abs(pathwayStats.bestStrandReduction) * 100)}% best
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Strandedness Change</p>
+                          <p className={`text-2xl md:text-3xl font-black ${selectedDestRow.diff_strandedness < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {Math.round(selectedDestRow.diff_strandedness * 100)}%
                           </p>
                           <p className="text-[10px] text-blue-300 mt-1">
-                            Avg. {Math.round(Math.abs(pathwayStats.avgStrandReduction) * 100)}% across pathways
+                            Destination stranded rate: {(selectedDestRow.share_stranded_destination * 100).toFixed(1)}%
                           </p>
                         </div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-4 md:gap-8">
-                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
-                        <Users size={24} className="md:w-7 md:h-7" />
+                      <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                          <Layers size={24} className="md:w-7 md:h-7" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Skill Similarity</p>
+                          <p className="text-2xl md:text-3xl font-black">{Math.round(selectedDestRow.similarity * 100)}%</p>
+                          <p className="text-[10px] text-blue-300 mt-1">
+                            Rating: {selectedDestRow.similarity_rating}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Total Workers in Pool</p>
-                        <p className="text-2xl md:text-3xl font-black">{(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
+                      <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                          <Users size={24} className="md:w-7 md:h-7" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Workers in Pool</p>
+                          <p className="text-2xl md:text-3xl font-black">{(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
+
         </section>
 
       </main>
@@ -1135,4 +1305,4 @@ const App = () => {
 };
 
 const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+root.render(<React.StrictMode><App /></React.StrictMode>);
