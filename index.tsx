@@ -19,6 +19,7 @@ import {
 import Papa from 'papaparse';
 import TennesseeMap from './src/components/TennesseeMap';
 import careerPathwaysRaw from './src/data/career_pathways.json';
+import tnLicensesRaw from './src/data/tn_licenses.json';
 
 // --- Types ---
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
@@ -98,6 +99,21 @@ interface CareerPathwaysData {
 }
 
 const careerPathways = careerPathwaysRaw as CareerPathwaysData;
+
+interface LicenseEntry {
+  profession: string;
+  regulation: string;
+  degree: string;
+  initial_fee: string;
+  exams: string;
+  experience: string;
+  continuing_education: string;
+  renewal_fee: string;
+  minimum_age: string;
+  good_moral_character: string;
+  citizenship: string;
+}
+const tnLicenses = tnLicensesRaw as Record<string, LicenseEntry[]>;
 
 const pluralize = (name: string): string =>
   name.endsWith('s') ? name : name + 's';
@@ -1100,7 +1116,7 @@ const App = () => {
                   {expandedRec === 0 && (
                     <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
                       <p className="text-sm text-slate-600 mb-4">
-                        Based on O*NET skill profiles, these are the top skills that workers in <span className="font-bold">{targetOccupation}</span> roles
+                        Based on BGI analysis of job postings data, these are the top skills that workers in <span className="font-bold">{targetOccupation}</span> roles
                         would need to develop to transition into <span className="font-bold">{selectedDestination}</span> positions.
                         Skills are ranked by the size of the gap between the two occupations.
                       </p>
@@ -1137,22 +1153,96 @@ const App = () => {
                   </div>
                   {expandedRec === 1 && (
                     <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
-                      {credentialSkills.length > 0 ? (
-                        <div className="space-y-3">
-                          <p className="text-sm text-slate-600 font-medium mb-4">The following credential-related skills were identified as gaps for this transition:</p>
-                          {credentialSkills.map((s, i) => (
-                            <div key={i} className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                              <FileText size={14} className="text-amber-600 flex-shrink-0" />
-                              <p className="text-sm font-black text-slate-800">{s.skill}</p>
+                      {(() => {
+                        const destLicenses = selectedDestination ? tnLicenses[selectedDestination] : undefined;
+                        if (destLicenses && destLicenses.length > 0) {
+                          return (
+                            <div className="space-y-4">
+                              <p className="text-sm text-slate-600 font-medium">
+                                Tennessee requires occupational licensing for professionals in <span className="font-bold">{selectedDestination}</span> roles.
+                                Workers transitioning into this field should be aware of the following state requirements:
+                              </p>
+                              {destLicenses.map((lic, i) => (
+                                <div key={i} className="p-5 bg-amber-50 rounded-2xl border border-amber-200">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <GraduationCap size={16} className="text-amber-700" />
+                                    <h4 className="text-base font-black text-slate-800">{lic.profession}</h4>
+                                    {lic.regulation && <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full uppercase">{lic.regulation}</span>}
+                                  </div>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {lic.degree && lic.degree !== 'None' && (
+                                      <div className="p-2 bg-white rounded-xl">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Education</p>
+                                        <p className="text-sm font-bold text-slate-700">{lic.degree}</p>
+                                      </div>
+                                    )}
+                                    {lic.initial_fee && parseFloat(lic.initial_fee) > 0 && (
+                                      <div className="p-2 bg-white rounded-xl">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Initial Fee</p>
+                                        <p className="text-sm font-bold text-slate-700">${parseFloat(lic.initial_fee).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</p>
+                                      </div>
+                                    )}
+                                    {lic.exams && parseInt(lic.exams) > 0 && (
+                                      <div className="p-2 bg-white rounded-xl">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Exams Required</p>
+                                        <p className="text-sm font-bold text-slate-700">{lic.exams}</p>
+                                      </div>
+                                    )}
+                                    {lic.experience && lic.experience !== '0' && (
+                                      <div className="p-2 bg-white rounded-xl">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Experience (yrs)</p>
+                                        <p className="text-sm font-bold text-slate-700">{lic.experience}</p>
+                                      </div>
+                                    )}
+                                    {lic.continuing_education && parseInt(lic.continuing_education) > 0 && (
+                                      <div className="p-2 bg-white rounded-xl">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Continuing Ed</p>
+                                        <p className="text-sm font-bold text-slate-700">{lic.continuing_education} hrs</p>
+                                      </div>
+                                    )}
+                                    {lic.renewal_fee && parseFloat(lic.renewal_fee) > 0 && (
+                                      <div className="p-2 bg-white rounded-xl">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Renewal Fee</p>
+                                        <p className="text-sm font-bold text-slate-700">${parseFloat(lic.renewal_fee).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                              {credentialSkills.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Related credentials from job postings</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {credentialSkills.map((s, i) => (
+                                      <span key={i} className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded-full">{s.skill}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <p className="text-xs text-slate-400 mt-2">Source: Knee Center for the Study of Occupational Regulation, Tennessee state data (2025).</p>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-sm text-slate-600 font-medium">No specific credential or licensing requirements were identified in the skill gap analysis for this transition.</p>
-                          <p className="text-xs text-slate-400 mt-2">We recommend checking Tennessee state licensing boards and industry certification bodies for occupation-specific requirements for {selectedDestination}.</p>
-                        </div>
-                      )}
+                          );
+                        } else if (credentialSkills.length > 0) {
+                          return (
+                            <div className="space-y-3">
+                              <p className="text-sm text-slate-600 font-medium mb-4">No Tennessee state license is required for {selectedDestination}, but the following credential-related skills were identified from job postings analysis:</p>
+                              {credentialSkills.map((s, i) => (
+                                <div key={i} className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                                  <FileText size={14} className="text-amber-600 flex-shrink-0" />
+                                  <p className="text-sm font-black text-slate-800">{s.skill}</p>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                              <p className="text-sm text-slate-600 font-medium">No Tennessee state license or specific credential requirements were identified for {selectedDestination}.</p>
+                              <p className="text-xs text-slate-400 mt-2">This occupation does not appear in the Knee Center's Tennessee occupational licensing database. We recommend checking industry certification bodies for voluntary credentials that may improve employability.</p>
+                            </div>
+                          );
+                        }
+                      })()}
                     </div>
                   )}
                 </div>
