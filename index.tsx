@@ -366,10 +366,18 @@ const App = () => {
   // --- Section 04: Skill gaps for selected origin -> destination ---
   const selectedSkillGaps = useMemo(() => {
     if (!targetOccupation || !selectedDestination) return [];
-    return careerPathways.skills
+    // Deduplicate: keep max gap per skill name
+    const skillMap: Record<string, { skill: string; gap: number; importance: number; origin: string; destination: string }> = {};
+    careerPathways.skills
       .filter(r => r.origin === targetOccupation && r.destination === selectedDestination && r.gap > 0)
+      .forEach(r => {
+        if (!skillMap[r.skill] || r.gap > skillMap[r.skill].gap) {
+          skillMap[r.skill] = r;
+        }
+      });
+    return Object.values(skillMap)
       .sort((a, b) => b.gap - a.gap)
-      .slice(0, 10);
+      .slice(0, 5);
   }, [targetOccupation, selectedDestination]);
 
   // --- Section 04: Credential-related skills ---
@@ -672,7 +680,7 @@ const App = () => {
               <div class="rec-card">
                 <h3>Destination ${String(i + 1).padStart(2, '0')}</h3>
                 <p class="rec-title">${p.destination}</p>
-                <p class="rec-advice">Wage Gain: +$${p.wage_gain.toLocaleString()} (${Math.round(p.wage_gain_pct * 100)}%) | Similarity: ${Math.round(p.similarity * 100)}% | Strandedness Change: ${Math.round(p.diff_strandedness * 100)}%</p>
+                <p class="rec-advice">Wage Gain: +$${p.wage_gain.toLocaleString()} (${Math.round(p.wage_gain_pct * 100)}%) | Similarity: ${p.similarity_rating ? p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1) : '—'} | Strandedness Change: ${Math.round(p.diff_strandedness * 100)}%</p>
               </div>
             `).join('')}
 
@@ -1048,14 +1056,13 @@ const App = () => {
                               <span className={`text-[11px] md:text-xs font-black ${isSelected ? 'text-white' : 'text-slate-700'}`}>{p.at_year_5} workers</span>
                             </div>
                           )}
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Similarity</span>
-                              <span className={`text-[10px] font-bold ${isSelected ? 'text-blue-300' : 'text-slate-500'}`}>{Math.round(p.similarity * 100)}%</span>
-                            </div>
-                            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isSelected ? 'bg-blue-800' : 'bg-slate-100'}`}>
-                              <div className={`h-full rounded-full ${isSelected ? 'bg-amber-400' : 'bg-amber-400'}`} style={{ width: `${Math.round(p.similarity * 100)}%` }} />
-                            </div>
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Similarity</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              p.similarity_rating === 'high' ? (isSelected ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700') :
+                              p.similarity_rating === 'medium' ? (isSelected ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-700') :
+                              (isSelected ? 'bg-red-400/20 text-red-300' : 'bg-red-100 text-red-700')
+                            }`}>{p.similarity_rating ? p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1) : '—'}</span>
                           </div>
                         </div>
                       </div>
@@ -1092,7 +1099,12 @@ const App = () => {
                   </div>
                   {expandedRec === 0 && (
                     <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Key Skills to Develop: {targetOccupation} &rarr; {selectedDestination}</p>
+                      <p className="text-sm text-slate-600 mb-4">
+                        Based on O*NET skill profiles, these are the top skills that workers in <span className="font-bold">{targetOccupation}</span> roles
+                        would need to develop to transition into <span className="font-bold">{selectedDestination}</span> positions.
+                        Skills are ranked by the size of the gap between the two occupations.
+                      </p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Top Skill Gaps</p>
                       {selectedSkillGaps.length > 0 ? (
                         <div className="space-y-2">
                           {selectedSkillGaps.slice(0, 5).map((s, i) => (
@@ -1286,10 +1298,7 @@ const App = () => {
                         </div>
                         <div>
                           <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Skill Similarity</p>
-                          <p className="text-2xl md:text-3xl font-black">{Math.round(selectedDestRow.similarity * 100)}%</p>
-                          <p className="text-[10px] text-blue-300 mt-1">
-                            Rating: {selectedDestRow.similarity_rating}
-                          </p>
+                          <p className="text-2xl md:text-3xl font-black capitalize">{selectedDestRow.similarity_rating || '—'}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4 md:gap-8">
