@@ -932,10 +932,13 @@ const App = () => {
                     <p className="text-xl md:text-2xl font-black text-blue-900">${occupationDiagnostics.medianWage.toLocaleString()}</p>
                     <p className="text-[9px] text-slate-400 mt-1">annual median for this occupation</p>
                   </div>
-                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
+                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100 group relative">
                     <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Part-Time Share</p>
                     <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.partTimeShare * 100).toFixed(1)}%</p>
                     <p className="text-[9px] text-slate-400 mt-1">working part-time in this occupation</p>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-56 text-center z-50 shadow-lg">
+                      Share of workers in this occupation working part-time, among those working at least 15 hours per week.
+                    </div>
                   </div>
                 </div>
               </div>
