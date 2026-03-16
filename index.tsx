@@ -832,7 +832,7 @@ const App = () => {
                   }`}
                 >
                   <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -bottom-6 sm:-bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{stats.st.toLocaleString()}</span>
+                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{Math.round(stats.st).toLocaleString()}</span>
                   <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-4 left-1/2 -translate-x-1/2 pointer-events-none">
                     <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">Stalled Workers</div>
                     <div className="text-xs leading-relaxed">Workers who have remained in the same low-wage job for 3 or more years without meaningful wage progression. These workers are economically stuck — employed, but unable to advance their careers or earnings.</div>
