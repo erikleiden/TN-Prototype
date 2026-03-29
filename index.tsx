@@ -204,6 +204,148 @@ const CREDENTIAL_PATTERNS = [
   /\bSeries [0-9]/i, /\bEPA\b.*608/i, /\bHAZMAT\b/i,
 ];
 
+/**
+ * Domain-based relevance filter for credential→occupation matching.
+ * Maps credential keywords to occupation domains they are relevant to,
+ * so that (e.g.) "Adobe Certified Professional" never shows for Sheet Metal Workers.
+ */
+type CredDomain = 'healthcare' | 'behavioral' | 'trades' | 'tech' | 'finance' | 'food' | 'law_enforcement' | 'education' | 'fitness' | 'aviation' | 'safety' | 'general';
+
+const CRED_TO_DOMAIN: [RegExp, CredDomain][] = [
+  // Healthcare / clinical
+  [/\bRN\b|Registered Nurse|Nurs(?:e|ing)|LPN\b|LVN\b|APRN\b|PA-C\b|Physician|CNA\b|Certified Nursing/i, 'healthcare'],
+  [/\bBLS\b|Basic Life Support|ACLS\b|Advanced Cardiovascular|CPR\b|Cardiopulmonary|AED\b|Heartsaver|NRP\b|Neonatal Resuscitation/i, 'healthcare'],
+  [/Phlebotomy|ASCP\b|AMT\b|Radiolog|ARRT\b|Sonograph|Sterile Processing|Hemodialysis|EKG|ECG/i, 'healthcare'],
+  [/\bCST\b|Surgical|Medical (?:Assist|Billing|Coding|Licens)|Pharmacy|CCC-SLP|Speech.Language/i, 'healthcare'],
+  [/Board Certified|Board Eligible|NBCOT\b|Occupational Therapy|Physical Therap|Respiratory|CRNA\b|CRT\b/i, 'healthcare'],
+  [/Dietar|Nutrition|Diabetes Educator|Prosthetist|Orthotist|Massage.*Bodywork|Music Therapist|Therapeu?tic Recreation/i, 'healthcare'],
+  [/Immunization|Vaccination|Drug Enforcement|DEA\b|Patient Care|NHA Certified|First Responder|CFR\b/i, 'healthcare'],
+  [/Nurse (?:Midwife|Practitioner|Anesthetist)|CNM\b|Certified (?:Nurse|Clinical)|Long Term Monitor/i, 'healthcare'],
+  [/Veterinar/i, 'healthcare'],
+  // Behavioral health / social work / counseling
+  [/LCSW\b|LMFT\b|LMHC\b|LPC\b|BCBA\b|BCaBA\b|Social Work|Counselor|CADC\b|Chemical Dependency/i, 'behavioral'],
+  [/Behavior Analyst|Psychiatric|Psychology License|MOAB\b|Aggressive Behavior|Crisis Prevention|CPI\b/i, 'behavioral'],
+  [/Case Manager|CCM\b|Community Health Worker|Employment Support|School Social Work/i, 'behavioral'],
+  // Construction / trades / transportation
+  [/\bCDL\b|Commercial Driver|Chauffeur|Air Brake|Tanker|Doubles.*Triples|TWIC\b|DOT Medical/i, 'trades'],
+  [/\bOSHA\b|NCCER\b|Journeyman|Forklift|Crane Operator|Concrete.*ACI|Rigging|Scaffold/i, 'trades'],
+  [/\bASE\b|Automotive Service|I-CAR\b|EPA.*608|Refrigerant|HVAC\b|NATE\b|R-410A/i, 'trades'],
+  [/Electrician|Plumber|Pipefitter|Lineman|Powerline|NFPA\b|Arc Flash/i, 'trades'],
+  [/Lead.Safe|Hazardous Material|HAZMAT\b|HAZWOPER\b|Pesticide|Welding|AWS Certified Weld/i, 'trades'],
+  [/Valid Driver's License/i, 'general'],
+  // IT / Tech
+  [/CompTIA\b|CISSP\b|GIAC\b|Cisco|Microsoft Certified|Oracle.*Cloud|Linux Certified/i, 'tech'],
+  [/Information Systems Security|Cyber|Network\+|Security\+|Salesforce|Google Cloud|Red Hat/i, 'tech'],
+  // Finance
+  [/\bCPA\b|Certified Public Account|CFA\b|Series [0-9]|FINRA\b|Financial Planner/i, 'finance'],
+  [/Actuar|Insurance License|Adjuster License|Real Estate.*License|Property Specialist/i, 'finance'],
+  [/Benefits Professional|Payroll|Bookkeep/i, 'finance'],
+  // Food service
+  [/ServSafe\b|Food (?:Safety|Handler)|TIPS\b.*Certification|Alcohol Certification/i, 'food'],
+  // Law enforcement
+  [/Peace Officer|POST\b.*Certificate|Corrections Officer|Wicklander/i, 'law_enforcement'],
+  // Education
+  [/Teaching Certificate|Catechist|Career Development Facilitator/i, 'education'],
+  // Fitness / recreation
+  [/AFAA\b|Personal Trainer|Group Fitness|PSIA.*AASI|Clinical Exercise Specialist/i, 'fitness'],
+  // Aviation
+  [/Airframe.*Powerplant|A&P\b.*Certificate/i, 'trades'],
+  // Safety (cross-domain)
+  [/Certified Safety Professional|Loss (?:Prevention|Control)/i, 'safety'],
+  // Project management (broadly applicable)
+  [/\bPMP\b|Project Management Professional|Six Sigma|Lean Six/i, 'general'],
+  [/LEED\b/i, 'trades'],
+  // Catch-all for generic cert/license matches
+  [/\baccredit/i, 'general'],
+  [/\bdegree\b/i, 'general'],
+  [/Birth Certificate/i, 'general'],
+  [/COVID.*Vaccin/i, 'general'],
+  [/First Aid|Red Cross/i, 'general'],
+  [/\bCPC\b|Certified Professional Coder|Medical Coding/i, 'healthcare'],
+  [/\bCCS\b|Certified Coding Specialist/i, 'healthcare'],
+  [/\bCMA\b/i, 'healthcare'],
+  [/Alliance.*Information.*Referral/i, 'behavioral'],
+  [/Activity Assistant/i, 'healthcare'],
+  [/Architecture License/i, 'trades'],
+  [/Professional Engineer|PE License/i, 'trades'],
+];
+
+const OCC_DOMAINS: [RegExp, CredDomain[]][] = [
+  // Healthcare occupations (broad match for medical/clinical roles)
+  [/Nurs|Physician|Surgeon|Dental|Pharm|Radiolog|Medical|Health(?!.*Safety)|Clinical|Respiratory|Diagnost|Sonograph|Patholog|Dietitian|Nutritionist|Optom|Chiropract|Veterinar|Podiatr|Speech.Language|Audiolog|Occupational Therap|Physical Therap|Massage|Ambulance|EMT\b|Paramedic|Psychiatric Aide|Orderly|Home Health|Phlebotom|Surgical Tech|Anesthetist|Midwi|Laboratory Tech|Other Therapist/i, ['healthcare', 'general']],
+  // Behavioral health
+  [/Social Work|Counselor|Psycholog|Mental Health|Substance Abuse|Behavioral|Community Health|Rehabilitation/i, ['behavioral', 'healthcare', 'general']],
+  // Trades / construction / transportation
+  [/Construct|Carpenter|Electrician|Plumber|Mason\b|Roofer|Welder|Weld|HVAC|Heating.*Air|Mechanic|Driver|Truck|Bus Driver|Heavy.*Equipment|Crane|Excavat|Pipeline|Insulation|Sheet Metal|Ironwork|Drywall|Painter.*Paper|Tile|Cement|Paving|Highway Maint|Hazardous Material|Installation.*Maint|Extraction|Automotive|Diesel|Aircraft Mechanic|Power.Line|Maintenance.*Repair|Machin|CNC|Tool.*Die|Assembler|Fabricat|Water.*Wastewater/i, ['trades', 'safety', 'general']],
+  // Aviation (must come before generic patterns that might match "Aircraft")
+  [/Pilot|Aircraft|Aviation|Aerospace|Flight Engineer|Air Traffic/i, ['aviation', 'trades', 'general']],
+  // IT / Tech
+  [/Software|Computer|Web Develop|Network.*Architect|Network.*Admin|Database|Information Security|IT |Systems Admin|Programmer|Data Scien|Cyber/i, ['tech', 'general']],
+  // Finance
+  [/Account|Auditor|Financial|Actuar|Tax|Budget|Credit|Loan|Securities|Broker|Insurance(?!.*Sales)|Claims|Bookkeep|Payroll/i, ['finance', 'general']],
+  // Food service
+  [/Cook|Chef|Food Prep|Baker|Bartender|Waiter|Waitress|Restaurant|Food Service|Dining|Cafeteria|Food Processing|Supervisors of Food/i, ['food', 'general']],
+  // Law enforcement (includes healthcare for CPR/first aid relevance)
+  [/Police|Sheriff|Detective|Correction|Probation|Patrol|Criminal|Telecommunicator|Security Guard/i, ['law_enforcement', 'healthcare', 'general']],
+  // Fitness / athletics (MUST come before education to avoid "Instructor" false match)
+  [/Fitness|Athletic|Exercise|Recreation|Personal Train|\bSport\b|Coach/i, ['fitness', 'healthcare', 'education', 'general']],
+  // Education
+  [/Teacher|Professor|Instructor|Tutor|Education|School|Librar|Postsecondary|Teaching Assistant|Religious.*Education|Childcare|Preschool|Kindergarten/i, ['education', 'healthcare', 'general']],
+  // Project management / business
+  [/Project Management|Management Analyst|Business Operation|Logistician|Compliance|Human Resource|Training.*Development|Compensation.*Benefit|Cost Estimat/i, ['general', 'finance']],
+  // Engineers (PE license, trades-adjacent)
+  [/Engineer/i, ['trades', 'general']],
+  // Safety
+  [/Safety Specialist|Safety Technician|Occupational Health/i, ['safety', 'trades', 'general']],
+  // Insurance sales
+  [/Insurance Sales|Real Estate/i, ['finance', 'general']],
+  // Landscaping
+  [/Landscap|Groundskeep|Lawn Service|Pest Control/i, ['trades', 'general']],
+  // Production / manufacturing supervisors
+  [/Supervisors of Production|Industrial Truck|Freight.*Stock|Material Mov|Supervisors of Transportation/i, ['trades', 'safety', 'general']],
+  // Inspectors
+  [/Inspector|Tester|Sorter|Sampler|Weigher|Building Inspector/i, ['trades', 'general']],
+  // Firefighters (need trades for hazmat, healthcare for medical response)
+  [/Firefighter/i, ['law_enforcement', 'healthcare', 'trades', 'safety', 'general']],
+  // Misc
+  [/Graphic Design|Producer|Director/i, ['tech', 'general']],
+  [/Paralegal|Legal Assist/i, ['finance', 'general']],
+  [/Dispatch/i, ['trades', 'general']],
+  [/Postal Service/i, ['general']],
+  [/Parts Sales/i, ['trades', 'general']],
+  [/Painting Worker/i, ['trades', 'general']],
+  [/Precision Instrument/i, ['trades', 'healthcare', 'general']],
+  [/Architect/i, ['trades', 'general']],
+  [/Other life scientist/i, ['healthcare', 'general']],
+  [/Other Healthcare/i, ['healthcare', 'general']],
+  [/Miscellaneous Health/i, ['healthcare', 'general']],
+];
+
+/** Check if a credential skill name is relevant to a destination occupation */
+function isCredentialRelevantToOccupation(skillName: string, destOccupation: string): boolean {
+  // Determine the credential's domain
+  let credDomain: CredDomain = 'general';
+  for (const [pat, domain] of CRED_TO_DOMAIN) {
+    if (pat.test(skillName)) {
+      credDomain = domain;
+      break;
+    }
+  }
+  // General credentials (PMP, First Aid, driver's license, etc.) are relevant everywhere
+  if (credDomain === 'general') return true;
+
+  // Determine valid domains for the destination occupation
+  let occDomains: CredDomain[] = ['general'];
+  for (const [pat, domains] of OCC_DOMAINS) {
+    if (pat.test(destOccupation)) {
+      occDomains = domains;
+      break;
+    }
+  }
+
+  return occDomains.includes(credDomain);
+}
+
 // ============================================================================
 // HELPER COMPONENTS
 // ============================================================================
@@ -472,6 +614,7 @@ const App = () => {
     return skillGapsTop5
       .filter(r => r.origin_occupation === targetOccupation && r.destination_occupation === selectedDestination && r.skill_gap > 0)
       .filter(s => CREDENTIAL_PATTERNS.some(p => p.test(s.SKILL_NAME)))
+      .filter(s => isCredentialRelevantToOccupation(s.SKILL_NAME, selectedDestination))
       .sort((a, b) => b.destination_importance - a.destination_importance);
   }, [targetOccupation, selectedDestination]);
 
