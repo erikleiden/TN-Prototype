@@ -234,19 +234,23 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
   const category = sectorDemand?.demand_category || occDemand?.demand_category || 'N/A';
   const trend = growth?.share_growth_trend || null;
 
+  // Data uses full strings like "High Demand", "Medium Demand", "Low Demand", "Not Enough Data"
   const colorMap: Record<string, string> = {
-    'High': isSelected ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700',
-    'Medium': isSelected ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-700',
-    'Low': isSelected ? 'bg-red-400/20 text-red-300' : 'bg-red-100 text-red-700',
+    'High Demand': isSelected ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700',
+    'Medium Demand': isSelected ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-700',
+    'Low Demand': isSelected ? 'bg-red-400/20 text-red-300' : 'bg-red-100 text-red-700',
+    'Not Enough Data': isSelected ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-400',
   };
   const colors = colorMap[category] || (isSelected ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-500');
 
-  const trendArrow = trend === 'Growing' ? '↑' : trend === 'Declining' ? '↓' : trend === 'Stable' ? '→' : '';
+  const trendArrow = trend === 'Growing' ? ' ↑' : trend === 'Declining' ? ' ↓' : trend === 'Stable' ? ' →' : '';
+  // Short label: strip " Demand" suffix for compactness
+  const shortLabel = category.replace(' Demand', '') + trendArrow;
 
   if (compact) {
     return (
       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${colors}`}>
-        {category}{trendArrow ? ` ${trendArrow}` : ''}
+        {shortLabel}
       </span>
     );
   }
@@ -254,7 +258,7 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
   return (
     <div className="flex items-center gap-2">
       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${colors}`}>
-        {category}{trendArrow ? ` ${trendArrow}` : ''}
+        {shortLabel}
       </span>
     </div>
   );
@@ -483,18 +487,20 @@ const App = () => {
       r => r.origin_occupation === targetOccupation && r.skill_gap > 0.005 && r.destination_importance > 0.005 && allDests.includes(r.destination_occupation)
     );
 
-    const skillMap: Record<string, { count: number; maxImportance: number }> = {};
+    // Track unique destination occupations per skill (prevents double-counting if same
+    // skill appears multiple times for the same origin→destination pair in the data)
+    const skillMap: Record<string, { dests: Set<string>; maxImportance: number }> = {};
     allSkillGaps.forEach(s => {
-      if (!skillMap[s.SKILL_NAME]) skillMap[s.SKILL_NAME] = { count: 0, maxImportance: 0 };
-      skillMap[s.SKILL_NAME].count++;
+      if (!skillMap[s.SKILL_NAME]) skillMap[s.SKILL_NAME] = { dests: new Set(), maxImportance: 0 };
+      skillMap[s.SKILL_NAME].dests.add(s.destination_occupation);
       skillMap[s.SKILL_NAME].maxImportance = Math.max(skillMap[s.SKILL_NAME].maxImportance, s.destination_importance);
     });
 
     return Object.entries(skillMap)
-      .filter(([, data]) => data.count >= 2)
-      .sort((a, b) => b[1].count - a[1].count || b[1].maxImportance - a[1].maxImportance)
+      .filter(([, data]) => data.dests.size >= 2)
+      .sort((a, b) => b[1].dests.size - a[1].dests.size || b[1].maxImportance - a[1].maxImportance)
       .slice(0, 5)
-      .map(([skill, data]) => ({ skill, count: data.count, totalDests: totalDestCount, importance: data.maxImportance }));
+      .map(([skill, data]) => ({ skill, count: data.dests.size, totalDests: totalDestCount, importance: data.maxImportance }));
   }, [targetOccupation]);
 
   // --- Selected destination row (for sidebar metrics) ---
@@ -725,24 +731,52 @@ const App = () => {
                 </button>
               </div>
 
-              <div className="flex gap-2 h-48 sm:h-64">
+              {/* Stacked horizontal bar showing proportions */}
+              <div className="flex rounded-2xl overflow-hidden h-14 mb-6 shadow-sm border border-slate-100">
                 {treemapItems.map(item => {
-                  const isActive = selectedCohort === item.key || selectedCohort === 'All Stranded';
+                  const barColors: Record<string, string> = {
+                    'Low Wage': 'bg-blue-600', 'Underemployed': 'bg-amber-500', 'Career Stalled': 'bg-emerald-500'
+                  };
                   const isExact = selectedCohort === item.key;
                   return (
                     <div key={item.key}
                       onClick={() => setSelectedCohort(item.key)}
-                      className={`relative rounded-2xl border-2 cursor-pointer transition-all duration-300 overflow-hidden group flex flex-col justify-between p-4 ${
-                        isExact ? `${item.selectedColor} shadow-xl scale-[1.02]` : isActive ? `${item.color} hover:shadow-lg` : `${item.color} opacity-50 hover:opacity-80`}`}
-                      style={{ width: `${Math.max(item.pct, 18)}%` }}>
-                      <div>
-                        <p className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${isExact ? 'text-white/80' : item.textColor + '/60'}`}>{item.label}</p>
-                        <p className={`text-lg sm:text-2xl font-black mt-1 ${isExact ? 'text-white' : item.textColor}`}>{item.value.toLocaleString()}</p>
-                        <p className={`text-[9px] font-bold mt-0.5 ${isExact ? 'text-white/60' : item.textColor + '/40'}`}>{item.pct.toFixed(0)}% of stranded</p>
+                      title={item.tooltip}
+                      className={`relative cursor-pointer transition-all duration-300 flex items-center justify-center group ${barColors[item.label]} ${isExact ? 'ring-4 ring-inset ring-white/40 brightness-110' : 'opacity-75 hover:opacity-100'}`}
+                      style={{ width: `${Math.max(item.pct, 16)}%` }}>
+                      <span className="text-[9px] font-black text-white uppercase tracking-wider select-none hidden sm:block truncate px-2">
+                        {item.pct.toFixed(0)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Cohort stat cards */}
+              <div className="grid grid-cols-3 gap-3">
+                {treemapItems.map(item => {
+                  const isExact = selectedCohort === item.key;
+                  const cardColors: Record<string, string> = {
+                    'Low Wage': isExact ? 'bg-blue-600 border-blue-600' : 'bg-blue-50 border-blue-100',
+                    'Underemployed': isExact ? 'bg-amber-500 border-amber-500' : 'bg-amber-50 border-amber-100',
+                    'Career Stalled': isExact ? 'bg-emerald-500 border-emerald-500' : 'bg-emerald-50 border-emerald-100',
+                  };
+                  const dotColors: Record<string, string> = {
+                    'Low Wage': 'bg-blue-600', 'Underemployed': 'bg-amber-500', 'Career Stalled': 'bg-emerald-500'
+                  };
+                  return (
+                    <div key={item.key}
+                      onClick={() => setSelectedCohort(item.key)}
+                      className={`relative p-4 rounded-2xl border-2 cursor-pointer transition-all duration-300 group ${cardColors[item.label]} ${isExact ? 'shadow-lg -translate-y-0.5' : 'hover:shadow-md'}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        {!isExact && <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColors[item.label]}`} />}
+                        <p className={`text-[9px] font-black uppercase tracking-wider truncate ${isExact ? 'text-white/80' : 'text-slate-500'}`}>{item.label}</p>
                       </div>
-                      {/* Tooltip on hover */}
-                      <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
-                        <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">{item.label} Workers</div>
+                      <p className={`text-lg sm:text-xl font-black leading-none ${isExact ? 'text-white' : 'text-slate-800'}`}>{item.value.toLocaleString()}</p>
+                      <p className={`text-[9px] font-bold mt-1 ${isExact ? 'text-white/60' : 'text-slate-400'}`}>{item.pct.toFixed(0)}% of stranded</p>
+                      {/* Tooltip */}
+                      <div className="invisible group-hover:visible absolute z-50 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1">{item.label}</div>
                         <div className="text-xs leading-relaxed">{item.tooltip}</div>
                         <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900"></div>
                       </div>
