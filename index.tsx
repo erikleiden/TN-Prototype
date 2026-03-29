@@ -731,71 +731,74 @@ const App = () => {
                 </button>
               </div>
 
-              {/* Tall stacked bar — fills remaining card height */}
-              <div className="flex-1 flex rounded-2xl overflow-hidden min-h-[260px] shadow-inner">
-                {treemapItems.map(item => {
-                  const bgFull: Record<string, string> = {
-                    'Low Wage': 'bg-blue-600',
+              {/* Three horizontal bar rows — one per cohort */}
+              <div className="flex-1 flex flex-col justify-between gap-3">
+                {(() => {
+                  const maxVal = Math.max(...treemapItems.map(t => t.value), 1);
+                  const barFill: Record<string, string> = {
+                    'Low Wage': 'bg-blue-500',
                     'Underemployed': 'bg-amber-500',
                     'Career Stalled': 'bg-emerald-500',
                   };
-                  const bgMuted: Record<string, string> = {
-                    'Low Wage': 'bg-blue-200',
-                    'Underemployed': 'bg-amber-200',
-                    'Career Stalled': 'bg-emerald-200',
+                  const dotColor: Record<string, string> = {
+                    'Low Wage': 'bg-blue-500',
+                    'Underemployed': 'bg-amber-500',
+                    'Career Stalled': 'bg-emerald-500',
                   };
-                  const textMuted: Record<string, string> = {
-                    'Low Wage': 'text-blue-400',
-                    'Underemployed': 'text-amber-400',
-                    'Career Stalled': 'text-emerald-400',
+                  const activeBorder: Record<string, string> = {
+                    'Low Wage': 'border-blue-400',
+                    'Underemployed': 'border-amber-400',
+                    'Career Stalled': 'border-emerald-400',
                   };
-                  const isExact = selectedCohort === item.key;
-                  const isAll = selectedCohort === 'All Stranded';
-                  const bg = isExact ? bgFull[item.label] : isAll ? bgFull[item.label] + ' opacity-70' : bgMuted[item.label];
-                  return (
-                    <div key={item.key}
-                      onClick={() => setSelectedCohort(item.key)}
-                      className={`relative cursor-pointer flex flex-col justify-between p-4 group transition-all duration-300 overflow-hidden ${isExact ? bgFull[item.label] + ' shadow-inner' : isAll ? bgFull[item.label] : bgMuted[item.label]}`}
-                      style={{ width: `${Math.max(item.pct, 16)}%`, opacity: (!isExact && !isAll) ? 0.55 : 1 }}>
 
-                      {/* Top: cohort label */}
-                      <p className={`text-[9px] font-black uppercase tracking-widest leading-none truncate ${isExact || isAll ? 'text-white/70' : textMuted[item.label]}`}>
-                        {item.label}
-                      </p>
+                  return treemapItems.map(item => {
+                    const isExact = selectedCohort === item.key;
+                    const isAll = selectedCohort === 'All Stranded';
+                    const barWidth = (item.value / maxVal) * 100;
 
-                      {/* Middle: count + share of total */}
-                      <div>
-                        <p className={`text-2xl sm:text-3xl font-black leading-none ${isExact || isAll ? 'text-white' : 'text-slate-700'}`}>
-                          {item.value.toLocaleString()}
-                        </p>
-                        <p className={`text-[9px] font-bold mt-1 ${isExact || isAll ? 'text-white/60' : textMuted[item.label]}`}>
-                          workers
-                        </p>
+                    return (
+                      <div key={item.key}
+                        onClick={() => setSelectedCohort(item.key)}
+                        className={`relative group cursor-pointer flex-1 flex flex-col justify-between p-5 rounded-2xl border-2 transition-all duration-300 ${
+                          isExact
+                            ? `bg-white ${activeBorder[item.label]} shadow-md`
+                            : 'bg-slate-50 border-transparent hover:bg-white hover:border-slate-200 hover:shadow-sm'
+                        } ${!isExact && !isAll ? 'opacity-60 hover:opacity-100' : ''}`}>
+
+                        {/* Label + stats row */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor[item.label]}`} />
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{item.label}</span>
+                          </div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-black text-slate-800 tabular-nums">{item.value.toLocaleString()}</span>
+                            <span className="text-xs font-bold text-slate-400">{item.pct.toFixed(0)}%</span>
+                          </div>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 ${barFill[item.label]}`}
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
+
+                        {/* Tooltip */}
+                        <div className="invisible group-hover:visible absolute z-50 w-72 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1">{item.label}</div>
+                          <div className="text-xs leading-relaxed">{item.tooltip}</div>
+                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900" />
+                        </div>
                       </div>
-
-                      {/* Bottom: large % watermark */}
-                      <p className={`text-4xl sm:text-5xl font-black leading-none select-none ${isExact || isAll ? 'text-white/20' : 'text-slate-300/60'}`}>
-                        {item.pct.toFixed(0)}%
-                      </p>
-
-                      {/* Selected indicator bar at bottom */}
-                      {isExact && (
-                        <div className="absolute bottom-0 inset-x-0 h-1.5 bg-white/40" />
-                      )}
-
-                      {/* Tooltip */}
-                      <div className="invisible group-hover:visible absolute z-50 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
-                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1">{item.label}</div>
-                        <div className="text-xs leading-relaxed">{item.tooltip}</div>
-                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900"></div>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
 
-              {/* Footer: share of total workforce */}
-              <div className="mt-4 flex items-center justify-between">
+              {/* Footer */}
+              <div className="mt-5 flex items-center justify-between">
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Share of sector workforce</p>
                 <p className="text-[10px] font-black text-slate-600">
                   {stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(1) : 0}% stranded
