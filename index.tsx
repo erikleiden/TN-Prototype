@@ -1,149 +1,141 @@
+/**
+ * Tennessee Stranded Talent Interactive Explorer
+ * ================================================
+ * A policy dashboard for analyzing workforce stratification in Tennessee.
+ * Identifies "stranded workers" (low-wage, underemployed, career-stalled)
+ * and provides career pathway analysis with skill gap and credential data.
+ *
+ * Data sources:
+ *   - cross_tabulated_data.json: Worker microdata by occupation/industry/demographics
+ *   - stalled_workers.csv: Tenure-based stalled worker analysis
+ *   - occ_similarity.json: O*NET skill-similarity between occupation pairs
+ *   - national_transitions.json: Observed occupational transitions (national + TN)
+ *   - skill_gaps_top5.json: Skill gaps for top-5 destination occupations
+ *   - skill_gaps_top20.json: Skill gaps for top-20 destinations (cross-pathway analysis)
+ *   - posting_demand.json: TN job posting demand by occupation and sector
+ *   - tn_licenses.json: Statutory occupational licensing (Knee Center data)
+ *   - common_credentials.json: Common industry-expected certifications
+ *
+ * Architecture:
+ *   index.tsx (this file) — main App component, state management, data orchestration
+ *   src/components/TennesseeMap.tsx — interactive D3 map of TN MSA regions
+ */
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  MapPin,
-  Briefcase,
-  Target,
-  Download,
-  Users,
-  GraduationCap,
-  ArrowRight,
-  ChevronDown,
-  LayoutDashboard,
-  BarChart3,
-  Layers,
-  FileText,
-  TrendingUp,
-  Map as MapIcon
+  MapPin, Briefcase, Target, Download, Users, GraduationCap,
+  ArrowRight, ChevronDown, LayoutDashboard, BarChart3, Layers,
+  FileText, TrendingUp, Map as MapIcon, Flame, Activity
 } from 'lucide-react';
 import Papa from 'papaparse';
 import TennesseeMap from './src/components/TennesseeMap';
-import careerPathwaysRaw from './src/data/career_pathways.json';
+
+// --- Static data imports (bundled at build time by Vite) ---
+import crossTabulatedRaw from './src/data/cross_tabulated_data.json';
+import occSimilarityRaw from './src/data/occ_similarity.json';
+import nationalTransitionsRaw from './src/data/national_transitions.json';
+import skillGapsTop5Raw from './src/data/skill_gaps_top5.json';
+import skillGapsTop20Raw from './src/data/skill_gaps_top20.json';
+import postingDemandRaw from './src/data/posting_demand.json';
 import tnLicensesRaw from './src/data/tn_licenses.json';
+import commonCredsRaw from './src/data/common_credentials.json';
 
-// --- Types ---
+// ============================================================================
+// TYPES
+// ============================================================================
+
 type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
-
-interface DataRow {
-  msa_category: string;
-  NAICS2_NAME: string;
-  n_weighted: number;
-  n_weighted_low_wage: number;
-  n_weighted_underemployed: number;
-  n_weighted_stalled: number;
-  education_level_label: string;
-  soc_2019_5_acs_name: string;
-  age_group: string;
-}
-
 type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'All Stranded';
 
-// Education levels in increasing order of credential (from the data)
-const EDUCATION_ORDER = [
-  'Less than HS',
-  'HS diploma/GED',
-  'Some college',
-  "Associate's degree",
-  "Bachelor's degree",
-  "Master's degree",
-  'Professional/Doctorate'
-];
-
-const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
-
-// --- Career Pathways Data Types ---
-interface TransitionRow {
-  origin: string;
-  destination: string;
-  at_year_5: number;
-  origin_share: number;
-  a_median_origin: number;
-  a_median_destination: number;
-  share_stranded_origin: number;
-  share_stranded_destination: number;
-  share_part_time_origin: number;
-  similarity: number;
-  similarity_rating: string;
-  wage_gain: number;
-  wage_gain_pct: number;
-  diff_strandedness: number;
+/** A row from cross_tabulated_data.json (worker microdata) */
+interface DataRow {
+  SOC_2019_5_ACS_NAME: string;
+  naics2_title: string;
+  msa_category: string;
+  age_group: string;
+  education_level_label: string;
+  part_time: boolean | number | null;
+  n_weighted: number;
+  n_stranded_weighted: number;
+  n_low_wage_weighted: number;
+  n_underemployed_weighted: number;
+  median_wage: number | null;
 }
 
-interface SimilarityRow {
-  origin: string;
-  destination: string;
-  a_median_origin: number;
-  a_median_destination: number;
-  share_stranded_origin: number;
-  share_stranded_destination: number;
-  share_part_time_origin: number;
-  similarity: number;
+/** A row from occ_similarity.json or national_transitions.json */
+interface PathwayRow {
+  SOC_2019_5_ACS_NAME_SOURCE: string;
+  SOC_2019_5_ACS_NAME_TARGET: string;
+  standardized_similarity: number;
   similarity_rating: string;
-  wage_gain: number;
-  wage_gain_pct: number;
+  a_median_SOURCE: number;
+  a_median_TARGET: number;
+  share_stranded_SOURCE: number;
+  share_stranded_TARGET: number;
+  share_low_wage_SOURCE: number;
+  share_low_wage_TARGET: number;
+  share_underemployed_SOURCE: number;
+  share_underemployed_TARGET: number;
+  share_part_time_SOURCE: number;
+  share_part_time_TARGET: number;
+  potential_wage_gain: number;
+  potential_wage_gain_pct: number;
   diff_strandedness: number;
+  demand_category_TARGET: string | null;
+  demand_growth_category_TARGET: string | null;
+  // Transition-only fields (null on similarity rows)
+  at_year_5_national?: number | null;
+  at_year_5_tennessee?: number | null;
+  origin_share_at_year_5?: number | null;
 }
 
+/** A row from skill_gaps_top5.json or skill_gaps_top20.json */
 interface SkillGapRow {
-  origin: string;
-  destination: string;
-  skill: string;
-  gap: number;
-  importance: number;
+  origin_occupation: string;
+  destination_occupation: string;
+  SKILL_NAME: string;
+  skill_gap: number;
+  destination_importance: number;
 }
 
-interface CareerPathwaysData {
-  transitions: TransitionRow[];
-  similarity: SimilarityRow[];
-  skills: SkillGapRow[];
+/** A row from posting_demand.json (occ-level demand) */
+interface OccDemandRow {
+  SOC_2019_5_ACS_NAME: string;
+  n_postings_tn: number | null;
+  tn_share: number | null;
+  lq: number | null;
+  demand_category: string;
 }
 
-const careerPathways = careerPathwaysRaw as CareerPathwaysData;
+/** A row from posting_demand.json (occupation x sector demand) */
+interface OccSectorDemandRow {
+  SOC_2019_5_ACS_NAME: string;
+  NAICS2_NAME: string;
+  n_postings_tn: number | null;
+  demand_category: string | null;
+}
+
+/** A row from posting_demand.json (growth trends) */
+interface ShareGrowthRow {
+  SOC_2019_5_ACS_NAME: string;
+  postings_share_implied_annual_growth_pct: number | null;
+  share_growth_trend: string;
+}
 
 interface LicenseEntry {
   profession: string;
   regulation: string;
   degree: string;
 }
-const tnLicenses = tnLicensesRaw as Record<string, LicenseEntry[]>;
 
-const pluralize = (name: string): string =>
-  name.endsWith('s') ? name : name + 's';
+interface CredentialEntry {
+  credential: string;
+  type: 'common_expectation';
+  description: string;
+}
 
-// --- Load Real Data ---
-const loadCSVData = async (): Promise<DataRow[]> => {
-  try {
-    const response = await fetch('/cross_tabulated_data_cleaned_correct.csv');
-    const csvText = await response.text();
-
-    return new Promise((resolve) => {
-      Papa.parse(csvText, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          const mappedData = (results.data as any[]).map((row: any) => ({
-            msa_category: row.msa_category || '',
-            NAICS2_NAME: row.naics2_title || 'Other',
-            n_weighted: Number(row.n_weighted) || 0,
-            n_weighted_low_wage: Number(row.n_low_wage_weighted) || 0,
-            n_weighted_underemployed: Number(row.n_underemployed_weighted) || 0,
-            n_weighted_stalled: Number(row.n_stranded_weighted) || 0,
-            education_level_label: row.education_level_label || 'Unknown',
-            soc_2019_5_acs_name: row.SOC_2019_5_ACS_NAME || 'Other',
-            age_group: row.age_group || ''
-          }));
-          resolve(mappedData);
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error loading CSV data:', error);
-    return [];
-  }
-};
-
-// --- Stalled Workers Data ---
+/** Stalled workers CSV row */
 interface StalledRow {
   msa_category: string;
   naics2_title: string;
@@ -153,15 +145,132 @@ interface StalledRow {
   tenure_years: number;
 }
 
+// ============================================================================
+// DATA SETUP
+// ============================================================================
+
+const crossTabulatedData = crossTabulatedRaw as DataRow[];
+const occSimilarity = occSimilarityRaw as PathwayRow[];
+const nationalTransitions = nationalTransitionsRaw as PathwayRow[];
+const skillGapsTop5 = skillGapsTop5Raw as SkillGapRow[];
+const skillGapsTop20 = skillGapsTop20Raw as SkillGapRow[];
+const postingDemand = postingDemandRaw as {
+  occ: OccDemandRow[];
+  occ_sector: OccSectorDemandRow[];
+  share_growth: ShareGrowthRow[];
+};
+const tnLicenses = tnLicensesRaw as Record<string, LicenseEntry[]>;
+const commonCredentials = commonCredsRaw as Record<string, CredentialEntry[]>;
+
+// Build lookup maps for fast access
+const demandByOcc = new Map(postingDemand.occ.map(r => [r.SOC_2019_5_ACS_NAME, r]));
+const growthByOcc = new Map(postingDemand.share_growth.map(r => [r.SOC_2019_5_ACS_NAME, r]));
+const demandByOccSector = new Map<string, OccSectorDemandRow>();
+postingDemand.occ_sector.forEach(r => {
+  demandByOccSector.set(`${r.SOC_2019_5_ACS_NAME}|||${r.NAICS2_NAME}`, r);
+});
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Education levels in increasing order of credential */
+const EDUCATION_ORDER = [
+  'Less than HS', 'HS diploma/GED', 'Some college',
+  "Associate's degree", "Bachelor's degree", "Master's degree",
+  'Professional/Doctorate'
+];
+
+const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
+
+/** Stall-duration brackets for the stalled workers analysis */
+const TENURE_BUCKETS: [string, number, number][] = [
+  ['3-4 yrs', 3, 4], ['4-5 yrs', 4, 5], ['5-7 yrs', 5, 7],
+  ['7-10 yrs', 7, 10], ['10+ yrs', 10, Infinity],
+];
+
+/** Regex patterns for matching credential-like skills from job postings */
+const CREDENTIAL_PATTERNS = [
+  /\bcertif/i, /\blicens/i, /\bdegree\b/i, /\baccredit/i,
+  /\bCDL\b/, /\bOSHA\b/, /\bCPA\b/, /\bCNA\b/, /\bRN\b/, /\bLPN\b/, /\bLVN\b/,
+  /\bAPRN\b/, /\bPA-C\b/, /\bLCSW\b/, /\bLMFT\b/, /\bLMHC\b/, /\bLPC\b/,
+  /\bCRNA\b/, /\bCRT\b/, /\bCST\b/, /\bCPC\b/, /\bCCS\b/, /\bCMA\b/,
+  /\bBCBA\b/, /\bNBCOT\b/, /\bNCCER\b/, /\bASE\b/, /\bGIAC\b/, /\bLEED\b/,
+  /\bServSafe\b/, /\bJourneyman\b/, /\bPeace Officer\b/, /\bTeaching Certificate\b/,
+  /\bBoard Certified\b/i, /\bBoard Eligible\b/i,
+  /\bDriver's License\b/i, /\bA&P\b.*Certificate/i,
+  /\bPMP\b/, /\bSix Sigma\b/i, /\bCompTIA\b/i, /\bCISSP\b/, /\bAWS\b/,
+  /\bPhlebotomy\b/i, /\bBLS\b/, /\bCPR\b/, /\bACLS\b/,
+  /\bSeries [0-9]/i, /\bEPA\b.*608/i, /\bHAZMAT\b/i,
+];
+
+// ============================================================================
+// HELPER COMPONENTS
+// ============================================================================
+
+const pluralize = (name: string): string =>
+  name.endsWith('s') ? name : name + 's';
+
+/** Horizontal progress bar for demographic/occupational breakdowns */
+const ProgressBar: React.FC<{ label: string; value: number; max: number; colorClass: string }> = ({ label, value, max, colorClass }) => (
+  <div className="space-y-1">
+    <div className="flex justify-between text-[10px] font-bold uppercase tracking-tight text-slate-500">
+      <span className="truncate pr-2">{label}</span>
+      <span className="tabular-nums">{value.toLocaleString()}</span>
+    </div>
+    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div className={`h-full transition-all duration-1000 ${colorClass}`}
+        style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }} />
+    </div>
+  </div>
+);
+
+/** Demand badge component for pathway cards */
+const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boolean; isSelected?: boolean }> = ({ occupation, sector, compact, isSelected }) => {
+  const occDemand = demandByOcc.get(occupation);
+  const growth = growthByOcc.get(occupation);
+  // Try sector-specific demand if available
+  const sectorDemand = sector ? demandByOccSector.get(`${occupation}|||${sector}`) : null;
+  const category = sectorDemand?.demand_category || occDemand?.demand_category || 'N/A';
+  const trend = growth?.share_growth_trend || null;
+
+  const colorMap: Record<string, string> = {
+    'High': isSelected ? 'bg-emerald-400/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700',
+    'Medium': isSelected ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-700',
+    'Low': isSelected ? 'bg-red-400/20 text-red-300' : 'bg-red-100 text-red-700',
+  };
+  const colors = colorMap[category] || (isSelected ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-500');
+
+  const trendArrow = trend === 'Growing' ? '↑' : trend === 'Declining' ? '↓' : trend === 'Stable' ? '→' : '';
+
+  if (compact) {
+    return (
+      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${colors}`}>
+        {category}{trendArrow ? ` ${trendArrow}` : ''}
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${colors}`}>
+        {category}{trendArrow ? ` ${trendArrow}` : ''}
+      </span>
+    </div>
+  );
+};
+
+// ============================================================================
+// STALLED WORKERS CSV LOADER
+// ============================================================================
+
 const loadStalledData = async (): Promise<StalledRow[]> => {
   try {
     const response = await fetch('/stalled_workers.csv');
     const csvText = await response.text();
     return new Promise((resolve) => {
       Papa.parse(csvText, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
+        header: true, dynamicTyping: true, skipEmptyLines: true,
         complete: (results) => {
           resolve((results.data as any[]).map((r: any) => ({
             msa_category: r.msa_category || '',
@@ -180,101 +289,69 @@ const loadStalledData = async (): Promise<StalledRow[]> => {
   }
 };
 
-const TENURE_BUCKETS: [string, number, number][] = [
-  ['3-4 yrs', 3,   4],
-  ['4-5 yrs', 4,   5],
-  ['5-7 yrs', 5,   7],
-  ['7-10 yrs', 7, 10],
-  ['10+ yrs', 10, Infinity],
-];
-
-// --- Components ---
-
-const ProgressBar: React.FC<{ label: string, value: number, max: number, colorClass: string }> = ({ label, value, max, colorClass }) => (
-  <div className="space-y-1">
-    <div className="flex justify-between text-[10px] font-bold uppercase tracking-tight text-slate-500">
-      <span className="truncate pr-2">{label}</span>
-      <span className="tabular-nums">{value.toLocaleString()}</span>
-    </div>
-    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-      <div
-        className={`h-full transition-all duration-1000 ${colorClass}`}
-        style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }}
-      />
-    </div>
-  </div>
-);
-
-const Tooltip: React.FC<{ children: React.ReactNode; content: string; title: string }> = ({ children, content, title }) => {
-  const [visible, setVisible] = useState(false);
-
-  return (
-    <div
-      className="relative inline-block"
-      onMouseEnter={() => setVisible(true)}
-      onMouseLeave={() => setVisible(false)}
-    >
-      {children}
-      {visible && (
-        <div className="absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 -top-2 left-full ml-4 pointer-events-none">
-          <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">{title}</div>
-          <div className="text-xs leading-relaxed">{content}</div>
-          <div className="absolute top-4 -left-2 w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-r-8 border-r-slate-900"></div>
-        </div>
-      )}
-    </div>
-  );
-};
+// ============================================================================
+// MAIN APP COMPONENT
+// ============================================================================
 
 const App = () => {
+  // --- State ---
   const [geography, setGeography] = useState<MSACategory>('All');
   const [sector, setSector] = useState<string>('Manufacturing');
   const [selectedCohort, setSelectedCohort] = useState<CohortType>('All Stranded');
   const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
   const [expandedRec, setExpandedRec] = useState<number | null>(0);
-  const [rawData, setRawData] = useState<DataRow[]>([]);
   const [stalledData, setStalledData] = useState<StalledRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [pathwayMode, setPathwayMode] = useState<'transitions' | 'similarity'>('transitions');
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
 
-  // Load data on mount
+  // Load stalled workers CSV on mount (cross-tabulated data is now statically imported)
   useEffect(() => {
-    Promise.all([loadCSVData(), loadStalledData()]).then(([data, stalled]) => {
-      setRawData(data);
+    loadStalledData().then((stalled) => {
       setStalledData(stalled);
       setIsLoading(false);
     });
   }, []);
 
+  // ============================================================================
+  // DERIVED DATA (useMemo hooks)
+  // ============================================================================
+
+  /** Available NAICS sectors from the cross-tabulated data */
   const sectors = useMemo(() => {
-    const allSectors = Array.from(new Set(rawData.map(d => d.NAICS2_NAME).filter(s => s && s !== 'Other' && s !== 'NA')));
+    const allSectors = Array.from(new Set(
+      crossTabulatedData.map(d => d.naics2_title).filter(s => s && s !== 'Other' && s !== 'NA')
+    ));
     return allSectors.sort();
-  }, [rawData]);
+  }, []);
 
+  /** Workers filtered by selected geography and sector */
   const filteredByScope = useMemo(() =>
-    rawData.filter(d => (geography === 'All' || d.msa_category === geography) && d.NAICS2_NAME === sector),
-  [rawData, geography, sector]);
+    crossTabulatedData.filter(d =>
+      (geography === 'All' || d.msa_category === geography) && d.naics2_title === sector
+    ),
+  [geography, sector]);
 
+  /** Stalled workers filtered by geography and sector */
   const stalledByScope = useMemo(() =>
     stalledData.filter(d =>
-      (geography === 'All' || d.msa_category === geography) &&
-      d.naics2_title === sector
+      (geography === 'All' || d.msa_category === geography) && d.naics2_title === sector
     ),
-    [stalledData, geography, sector]
-  );
+  [stalledData, geography, sector]);
 
+  /** Aggregate stats: total, low-wage, underemployed, stalled worker counts */
   const stats = useMemo(() => {
-    let lw = 0, ue = 0, st = 0, total = 0;
+    let lw = 0, ue = 0, total = 0;
     filteredByScope.forEach(d => {
       total += d.n_weighted;
-      lw += d.n_weighted_low_wage;
-      ue += d.n_weighted_underemployed;
+      lw += d.n_low_wage_weighted;
+      ue += d.n_underemployed_weighted;
     });
-    st = stalledByScope.reduce((sum, d) => sum + d.n_career_stalled_weighted, 0);
+    const st = stalledByScope.reduce((sum, d) => sum + d.n_career_stalled_weighted, 0);
     return { total, lw, ue, st };
   }, [filteredByScope, stalledByScope]);
 
+  /** Breakdowns by education, age, and occupation for the selected cohort */
   const cohortBreakdowns = useMemo(() => {
     const edu: Record<string, number> = {};
     const age: Record<string, number> = {};
@@ -282,23 +359,24 @@ const App = () => {
 
     filteredByScope.forEach(d => {
       let weight = 0;
-      if (selectedCohort === 'Low Wage') weight = d.n_weighted_low_wage;
-      else if (selectedCohort === 'Underemployed') weight = d.n_weighted_underemployed;
-      else if (selectedCohort === 'Stalled') weight = d.n_weighted_stalled;
-      else weight = d.n_weighted_low_wage + d.n_weighted_underemployed + d.n_weighted_stalled;
+      if (selectedCohort === 'Low Wage') weight = d.n_low_wage_weighted;
+      else if (selectedCohort === 'Underemployed') weight = d.n_underemployed_weighted;
+      else if (selectedCohort === 'Stalled') weight = d.n_stranded_weighted;
+      else weight = d.n_low_wage_weighted + d.n_underemployed_weighted + d.n_stranded_weighted;
 
       edu[d.education_level_label] = (edu[d.education_level_label] || 0) + weight;
       age[d.age_group] = (age[d.age_group] || 0) + weight;
-      occ[d.soc_2019_5_acs_name] = (occ[d.soc_2019_5_acs_name] || 0) + weight;
+      occ[d.SOC_2019_5_ACS_NAME] = (occ[d.SOC_2019_5_ACS_NAME] || 0) + weight;
     });
 
     return {
-      edu: (Object.entries(edu).sort((a,b) => EDUCATION_ORDER.indexOf(a[0]) - EDUCATION_ORDER.indexOf(b[0]))) as [string, number][],
-      age: (Object.entries(age).sort((a,b) => AGE_GROUPS.indexOf(a[0]) - AGE_GROUPS.indexOf(b[0]))) as [string, number][],
-      occ: (Object.entries(occ).sort((a,b) => b[1] - a[1]).filter(([, val]) => val > 0)) as [string, number][]
+      edu: Object.entries(edu).sort((a, b) => EDUCATION_ORDER.indexOf(a[0]) - EDUCATION_ORDER.indexOf(b[0])) as [string, number][],
+      age: Object.entries(age).sort((a, b) => AGE_GROUPS.indexOf(a[0]) - AGE_GROUPS.indexOf(b[0])) as [string, number][],
+      occ: Object.entries(occ).sort((a, b) => b[1] - a[1]).filter(([, val]) => val > 0) as [string, number][]
     };
   }, [filteredByScope, selectedCohort]);
 
+  /** Stalled workers breakdowns: occupational mix + stall duration distribution */
   const stalledBreakdowns = useMemo(() => {
     const occMix: Record<string, number> = {};
     const durations: Record<string, number> = Object.fromEntries(TENURE_BUCKETS.map(([l]) => [l, 0]));
@@ -315,31 +393,29 @@ const App = () => {
     };
   }, [stalledByScope]);
 
+  // Auto-select top occupation when filters change
   useEffect(() => {
     if (cohortBreakdowns.occ.length > 0) {
-      // Always reset to top occupation when sector, cohort, or data changes
       setTargetOccupation(cohortBreakdowns.occ[0][0]);
     }
   }, [sector, selectedCohort, geography, cohortBreakdowns.occ]);
 
-  // Reset destination when occupation changes
+  // Reset destination when occupation or pathway mode changes
   useEffect(() => {
     setSelectedDestination(null);
     setExpandedRec(null);
   }, [targetOccupation, pathwayMode]);
 
-  // --- Section 03: Occupation diagnostics from career pathways data ---
+  // --- Section 03: Occupation diagnostics from pathway data ---
   const occupationDiagnostics = useMemo(() => {
     if (!targetOccupation) return null;
-    // Look up from transitions first, fall back to similarity
-    const transRow = careerPathways.transitions.find(r => r.origin === targetOccupation);
-    const simRow = careerPathways.similarity.find(r => r.origin === targetOccupation);
-    const row = transRow || simRow;
+    const row = nationalTransitions.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation)
+      || occSimilarity.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation);
     if (!row) return null;
     return {
-      strandedShare: row.share_stranded_origin,
-      medianWage: row.a_median_origin,
-      partTimeShare: row.share_part_time_origin,
+      strandedShare: row.share_stranded_SOURCE,
+      medianWage: row.a_median_SOURCE,
+      partTimeShare: row.share_part_time_SOURCE,
     };
   }, [targetOccupation]);
 
@@ -347,95 +423,73 @@ const App = () => {
   const destinationPathways = useMemo(() => {
     if (!targetOccupation) return [];
     if (pathwayMode === 'transitions') {
-      const transResults = careerPathways.transitions
-        .filter(r => r.origin === targetOccupation)
-        .sort((a, b) => b.at_year_5 - a.at_year_5)
+      const transResults = nationalTransitions
+        .filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation)
+        .sort((a, b) => (b.at_year_5_national || 0) - (a.at_year_5_national || 0))
         .slice(0, 5);
-      // If no transitions found, fall back to similarity with a flag
+      // Fall back to similarity if no transitions found
       if (transResults.length === 0) {
-        return careerPathways.similarity
-          .filter(r => r.origin === targetOccupation)
-          .sort((a, b) => b.similarity - a.similarity)
+        return occSimilarity
+          .filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation)
+          .sort((a, b) => b.standardized_similarity - a.standardized_similarity)
           .slice(0, 5)
-          .map(r => ({ ...r, at_year_5: 0, _fallback: true } as TransitionRow & { _fallback?: boolean }));
+          .map(r => ({ ...r, _fallback: true }));
       }
       return transResults;
     } else {
-      return careerPathways.similarity
-        .filter(r => r.origin === targetOccupation)
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 5)
-        .map(r => ({ ...r, at_year_5: 0 } as TransitionRow));
+      return occSimilarity
+        .filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation)
+        .sort((a, b) => b.standardized_similarity - a.standardized_similarity)
+        .slice(0, 5);
     }
   }, [targetOccupation, pathwayMode]);
 
   const isTransitionFallback = pathwayMode === 'transitions' && destinationPathways.length > 0 && (destinationPathways[0] as any)?._fallback;
 
-  // --- Section 04: Skill gaps for selected origin -> destination ---
+  // --- Skill gaps for selected origin → destination ---
   const selectedSkillGaps = useMemo(() => {
     if (!targetOccupation || !selectedDestination) return [];
-    // Deduplicate: keep max gap per skill name
-    const skillMap: Record<string, { skill: string; gap: number; importance: number; origin: string; destination: string }> = {};
-    careerPathways.skills
-      .filter(r => r.origin === targetOccupation && r.destination === selectedDestination && r.gap > 0)
+    const skillMap: Record<string, SkillGapRow> = {};
+    skillGapsTop5
+      .filter(r => r.origin_occupation === targetOccupation && r.destination_occupation === selectedDestination && r.skill_gap > 0)
       .forEach(r => {
-        if (!skillMap[r.skill] || r.gap > skillMap[r.skill].gap) {
-          skillMap[r.skill] = r;
+        if (!skillMap[r.SKILL_NAME] || r.skill_gap > skillMap[r.SKILL_NAME].skill_gap) {
+          skillMap[r.SKILL_NAME] = r;
         }
       });
     return Object.values(skillMap)
-      .sort((a, b) => b.gap - a.gap)
+      .sort((a, b) => b.skill_gap - a.skill_gap)
       .slice(0, 5);
   }, [targetOccupation, selectedDestination]);
 
-  // --- Section 04: Credential-related skills ---
+  // --- Credential-related skills from job postings ---
   const credentialSkills = useMemo(() => {
-    // Match skills that are actual credentials: certification, license, degree patterns
-    // Use strict patterns to avoid false positives like "Dashboard", "Furnaces", etc.
-    const credentialPatterns = [
-      /\bcertif/i, /\blicens/i, /\bdegree\b/i, /\baccredit/i,
-      /\bCDL\b/, /\bOSHA\b/, /\bCPA\b/, /\bCNA\b/, /\bRN\b/, /\bLPN\b/, /\bLVN\b/,
-      /\bAPRN\b/, /\bPA-C\b/, /\bLCSW\b/, /\bLMFT\b/, /\bLMHC\b/, /\bLPC\b/,
-      /\bCRNA\b/, /\bCRT\b/, /\bCST\b/, /\bCPC\b/, /\bCCS\b/, /\bCMA\b/,
-      /\bBCBA\b/, /\bNBCOT\b/, /\bNCCER\b/, /\bASE\b/, /\bGIAC\b/, /\bLEED\b/,
-      /\bServSafe\b/, /\bJourneyman\b/, /\bPeace Officer\b/, /\bTeaching Certificate\b/,
-      /\bBoard Certified\b/i, /\bBoard Eligible\b/i,
-      /\bDriver's License\b/i, /\bA&P\b.*Certificate/i,
-    ];
     if (!targetOccupation || !selectedDestination) return [];
-    // Search all skills for this pair (not just top 10 by gap) for credential matches
-    return careerPathways.skills
-      .filter(r => r.origin === targetOccupation && r.destination === selectedDestination && r.gap > 0)
-      .filter(s => credentialPatterns.some(p => p.test(s.skill)))
-      .sort((a, b) => b.importance - a.importance);
+    return skillGapsTop5
+      .filter(r => r.origin_occupation === targetOccupation && r.destination_occupation === selectedDestination && r.skill_gap > 0)
+      .filter(s => CREDENTIAL_PATTERNS.some(p => p.test(s.SKILL_NAME)))
+      .sort((a, b) => b.destination_importance - a.destination_importance);
   }, [targetOccupation, selectedDestination]);
 
-  // --- Section 04: Cross-pathway skill acquisition ---
+  // --- Cross-pathway skill acquisition (uses broader top-20 dataset) ---
   const crossPathwaySkills = useMemo(() => {
     if (!targetOccupation) return [];
-    // Get all destinations from both transitions and similarity for this origin
-    const allTransDests = careerPathways.transitions.filter(r => r.origin === targetOccupation).map(r => r.destination);
-    const allSimDests = careerPathways.similarity.filter(r => r.origin === targetOccupation).map(r => r.destination);
+    const allTransDests = nationalTransitions.filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation).map(r => r.SOC_2019_5_ACS_NAME_TARGET);
+    const allSimDests = occSimilarity.filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation).map(r => r.SOC_2019_5_ACS_NAME_TARGET);
     const allDests = Array.from(new Set([...allTransDests, ...allSimDests]));
     const totalDestCount = allDests.length;
 
-    // Get all skill gaps for this origin across all destinations
-    // Filter for meaningful skills: importance > 0.005 and gap > 0.005
-    const allSkillGaps = careerPathways.skills.filter(
-      r => r.origin === targetOccupation && r.gap > 0.005 && r.importance > 0.005 && allDests.includes(r.destination)
+    const allSkillGaps = skillGapsTop20.filter(
+      r => r.origin_occupation === targetOccupation && r.skill_gap > 0.005 && r.destination_importance > 0.005 && allDests.includes(r.destination_occupation)
     );
 
-    // Count how many destinations each skill appears in, and track max importance
     const skillMap: Record<string, { count: number; maxImportance: number }> = {};
     allSkillGaps.forEach(s => {
-      if (!skillMap[s.skill]) {
-        skillMap[s.skill] = { count: 0, maxImportance: 0 };
-      }
-      skillMap[s.skill].count++;
-      skillMap[s.skill].maxImportance = Math.max(skillMap[s.skill].maxImportance, s.importance);
+      if (!skillMap[s.SKILL_NAME]) skillMap[s.SKILL_NAME] = { count: 0, maxImportance: 0 };
+      skillMap[s.SKILL_NAME].count++;
+      skillMap[s.SKILL_NAME].maxImportance = Math.max(skillMap[s.SKILL_NAME].maxImportance, s.destination_importance);
     });
 
-    // Require appearing in at least 2 pathways to qualify as "cross-pathway"
     return Object.entries(skillMap)
       .filter(([, data]) => data.count >= 2)
       .sort((a, b) => b[1].count - a[1].count || b[1].maxImportance - a[1].maxImportance)
@@ -443,266 +497,102 @@ const App = () => {
       .map(([skill, data]) => ({ skill, count: data.count, totalDests: totalDestCount, importance: data.maxImportance }));
   }, [targetOccupation]);
 
-  // --- Selected destination row ---
+  // --- Selected destination row (for sidebar metrics) ---
   const selectedDestRow = useMemo(() => {
     if (!selectedDestination || !targetOccupation) return null;
-    const transRow = careerPathways.transitions.find(
-      r => r.origin === targetOccupation && r.destination === selectedDestination
-    );
-    const simRow = careerPathways.similarity.find(
-      r => r.origin === targetOccupation && r.destination === selectedDestination
-    );
-    return transRow || simRow || null;
+    return nationalTransitions.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation && r.SOC_2019_5_ACS_NAME_TARGET === selectedDestination)
+      || occSimilarity.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation && r.SOC_2019_5_ACS_NAME_TARGET === selectedDestination)
+      || null;
   }, [targetOccupation, selectedDestination]);
+
+  // ============================================================================
+  // EXPORT EXECUTIVE BRIEF
+  // ============================================================================
 
   const handleExportBrief = () => {
     const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `
       <div style="margin-bottom: 16px;">
         <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 6px;">
-          <span>${label}</span>
-          <span>${value.toLocaleString()}</span>
+          <span>${label}</span><span>${value.toLocaleString()}</span>
         </div>
         <div style="height: 8px; width: 100%; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
           <div style="height: 100%; width: ${max > 0 ? (value / max) * 100 : 0}%; background: ${color}; border-radius: 4px;"></div>
         </div>
-      </div>
-    `;
+      </div>`;
 
     const maxAge = Math.max(...cohortBreakdowns.age.map(x => x[1]));
     const maxEdu = Math.max(...cohortBreakdowns.edu.map(x => x[1]));
     const maxOcc = Math.max(...cohortBreakdowns.occ.map(x => x[1]));
 
-    const reportHtml = `
-      <html>
-        <head>
-          <title>Executive Brief: Stranded Talent Strategy</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
-            * { box-sizing: border-box; }
-            body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; }
-            .page {
-              padding: 60px 70px 100px 70px;
-              min-height: 100vh;
-              page-break-after: always;
-              position: relative;
-            }
-            .header {
-              border-bottom: 4px solid #1e3a8a;
-              padding-bottom: 20px;
-              margin-bottom: 35px;
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-end;
-            }
-            .header h1 {
-              margin: 0;
-              text-transform: uppercase;
-              font-size: 24px;
-              color: #1e3a8a;
-              font-weight: 800;
-              letter-spacing: -0.025em;
-            }
-            .header .meta {
-              text-align: right;
-              font-size: 10px;
-              color: #64748b;
-              font-weight: 800;
-              text-transform: uppercase;
-              letter-spacing: 0.05em;
-              line-height: 1.8;
-            }
-            h2 {
-              color: #1e3a8a;
-              border-left: 6px solid #f59e0b;
-              padding-left: 12px;
-              text-transform: uppercase;
-              font-size: 14px;
-              margin-top: 0;
-              margin-bottom: 18px;
-              font-weight: 800;
-            }
-            .stat-grid {
-              display: grid;
-              grid-template-columns: repeat(4, 1fr);
-              gap: 12px;
-              margin-bottom: 28px;
-            }
-            .stat-box {
-              background: #f8fafc;
-              border: 1px solid #e2e8f0;
-              padding: 20px;
-              border-radius: 12px;
-              text-align: center;
-            }
-            .stat-val {
-              font-size: 28px;
-              font-weight: 800;
-              color: #1e40af;
-              display: block;
-              letter-spacing: -0.05em;
-            }
-            .stat-label {
-              font-size: 9px;
-              font-weight: 800;
-              color: #64748b;
-              text-transform: uppercase;
-              letter-spacing: 0.1em;
-              display: block;
-              margin-bottom: 8px;
-            }
-            .content-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 35px;
-            }
-            .rec-card {
-              background: #1e3a8a;
-              color: white;
-              padding: 28px;
-              border-radius: 16px;
-              margin-bottom: 18px;
-              page-break-inside: avoid;
-            }
-            .rec-card h3 {
-              color: #f59e0b;
-              margin: 0 0 10px 0;
-              text-transform: uppercase;
-              font-size: 11px;
-              font-weight: 800;
-              letter-spacing: 0.1em;
-            }
-            .rec-title {
-              font-size: 16px;
-              font-weight: 800;
-              margin: 0 0 12px 0;
-              color: #fef3c7;
-            }
-            .rec-advice {
-              font-size: 13px;
-              line-height: 1.6;
-              margin: 0;
-              color: #e2e8f0;
-              font-weight: 400;
-            }
-            .footer {
-              position: absolute;
-              bottom: 40px;
-              left: 70px;
-              right: 70px;
-              border-top: 1px solid #e2e8f0;
-              padding-top: 12px;
-              font-size: 8px;
-              color: #94a3b8;
-              text-align: center;
-              font-weight: 800;
-              text-transform: uppercase;
-              letter-spacing: 0.2em;
-            }
-            .section-divider {
-              margin-top: 35px;
-              margin-bottom: 25px;
-            }
-            @media print {
-              .page {
-                min-height: 100vh;
-                height: auto;
-              }
-              .rec-card {
-                page-break-inside: avoid;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="page">
-            <div class="header">
-              <div>
-                <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase I: Diagnostic Inventory</p>
-                <h1>Stranded Talent Analysis</h1>
-              </div>
-              <div class="meta">
-                Region: ${geography === 'All' ? 'All Tennessee' : geography + ' MSA'}<br>
-                Industry: ${sector}<br>
-                Briefing Date: ${new Date().toLocaleDateString()}
-              </div>
-            </div>
+    const reportHtml = `<html><head><title>Executive Brief: Stranded Talent Strategy</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
+        * { box-sizing: border-box; } body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; }
+        .page { padding: 60px 70px 100px 70px; min-height: 100vh; page-break-after: always; position: relative; }
+        .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 35px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .header h1 { margin: 0; text-transform: uppercase; font-size: 24px; color: #1e3a8a; font-weight: 800; letter-spacing: -0.025em; }
+        .header .meta { text-align: right; font-size: 10px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.8; }
+        h2 { color: #1e3a8a; border-left: 6px solid #f59e0b; padding-left: 12px; text-transform: uppercase; font-size: 14px; margin-top: 0; margin-bottom: 18px; font-weight: 800; }
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+        .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; text-align: center; }
+        .stat-val { font-size: 28px; font-weight: 800; color: #1e40af; display: block; letter-spacing: -0.05em; }
+        .stat-label { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 8px; }
+        .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 35px; }
+        .rec-card { background: #1e3a8a; color: white; padding: 28px; border-radius: 16px; margin-bottom: 18px; page-break-inside: avoid; }
+        .rec-card h3 { color: #f59e0b; margin: 0 0 10px 0; text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; }
+        .rec-title { font-size: 16px; font-weight: 800; margin: 0 0 12px 0; color: #fef3c7; }
+        .rec-advice { font-size: 13px; line-height: 1.6; margin: 0; color: #e2e8f0; font-weight: 400; }
+        .footer { position: absolute; bottom: 40px; left: 70px; right: 70px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 8px; color: #94a3b8; text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; }
+        @media print { .page { min-height: 100vh; height: auto; } .rec-card { page-break-inside: avoid; } }
+      </style></head><body>
+      <div class="page">
+        <div class="header"><div>
+          <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase I: Diagnostic Inventory</p>
+          <h1>Stranded Talent Analysis</h1>
+        </div><div class="meta">Region: ${geography === 'All' ? 'All Tennessee' : geography + ' MSA'}<br>Industry: ${sector}<br>Briefing Date: ${new Date().toLocaleDateString()}</div></div>
+        <div class="stat-grid">
+          <div class="stat-box"><span class="stat-label">Total Scope</span><span class="stat-val">${stats.total.toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Low Wage</span><span class="stat-val">${stats.lw.toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Underemployed</span><span class="stat-val">${stats.ue.toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Stalled</span><span class="stat-val">${Math.round(stats.st).toLocaleString()}</span></div>
+        </div>
+        <div class="content-grid"><div>
+          <h2>Demographic Profile: ${selectedCohort}</h2>
+          <div style="margin-bottom: 32px;"><h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Age Distribution</h3>
+            ${cohortBreakdowns.age.map(([l, v]) => renderReportBar(l, v, maxAge)).join('')}</div>
+          <div><h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Education Pipeline</h3>
+            ${cohortBreakdowns.edu.map(([l, v]) => renderReportBar(l, v, maxEdu, '#f59e0b')).join('')}</div>
+        </div><div>
+          <h2>Occupational Distribution</h2>
+          <p style="font-size: 11px; color: #64748b; margin: 0 0 18px 0; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
+          ${cohortBreakdowns.occ.slice(0, 10).map(([l, v]) => renderReportBar(l, v, maxOcc, '#10b981')).join('')}
+        </div></div>
+        <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
+      </div>
+      <div class="page">
+        <div class="header"><div>
+          <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Career Pathways</p>
+          <h1>Destination Analysis</h1>
+        </div><div class="meta">Focus Occupation: ${targetOccupation}<br>Target Cohort: ${selectedCohort}</div></div>
+        <p style="font-size: 13px; line-height: 1.6; color: #334155; margin: 0 0 30px 0;">
+          Career pathway analysis for <strong>${targetOccupation}</strong> within <strong>${geography === 'All' ? 'Tennessee' : geography}</strong>. Top destination occupations identified through observed transitions and skill similarity scoring.</p>
+        ${destinationPathways.map((p, i) => `<div class="rec-card">
+          <h3>Destination ${String(i + 1).padStart(2, '0')}</h3>
+          <p class="rec-title">${p.SOC_2019_5_ACS_NAME_TARGET}</p>
+          <p class="rec-advice">Wage Gain: +$${p.potential_wage_gain.toLocaleString()} (${Math.round(p.potential_wage_gain_pct * 100)}%) | Similarity: ${p.similarity_rating ? p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1) : '—'} | Strandedness Change: ${Math.round(p.diff_strandedness * 100)}% | TN Demand: ${p.demand_category_TARGET || 'N/A'}</p>
+        </div>`).join('')}
+        <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
+      </div>
+      <script>window.print();</script></body></html>`;
 
-            <div class="stat-grid">
-              <div class="stat-box">
-                <span class="stat-label">Total Scope</span>
-                <span class="stat-val">${stats.total.toLocaleString()}</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-label">Low Wage</span>
-                <span class="stat-val">${stats.lw.toLocaleString()}</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-label">Underemployed</span>
-                <span class="stat-val">${stats.ue.toLocaleString()}</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-label">Stalled</span>
-                <span class="stat-val">${Math.round(stats.st).toLocaleString()}</span>
-              </div>
-            </div>
-
-            <div class="content-grid">
-              <div>
-                <h2>Demographic Profile: ${selectedCohort}</h2>
-                <div style="margin-bottom: 32px;">
-                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Age Distribution</h3>
-                  ${cohortBreakdowns.age.map(([label, val]) => renderReportBar(label, val, maxAge)).join('')}
-                </div>
-                <div>
-                  <h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Education Pipeline</h3>
-                  ${cohortBreakdowns.edu.map(([label, val]) => renderReportBar(label, val, maxEdu, '#f59e0b')).join('')}
-                </div>
-              </div>
-              <div>
-                <h2>Occupational Distribution</h2>
-                <p style="font-size: 11px; color: #64748b; margin: 0 0 18px 0; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
-                ${cohortBreakdowns.occ.slice(0, 10).map(([label, val]) => renderReportBar(label, val, maxOcc, '#10b981')).join('')}
-              </div>
-            </div>
-
-            <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
-          </div>
-
-          <div class="page">
-            <div class="header">
-              <div>
-                <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Career Pathways</p>
-                <h1>Destination Analysis</h1>
-              </div>
-              <div class="meta">
-                Focus Occupation: ${targetOccupation}<br>
-                Target Cohort: ${selectedCohort}
-              </div>
-            </div>
-
-            <p style="font-size: 13px; line-height: 1.6; color: #334155; margin: 0 0 30px 0;">
-              Career pathway analysis for <strong>${targetOccupation}</strong> within <strong>${geography === 'All' ? 'Tennessee' : geography}</strong>. Top destination occupations identified through observed transitions and skill similarity scoring.
-            </p>
-
-            ${destinationPathways.map((p, i) => `
-              <div class="rec-card">
-                <h3>Destination ${String(i + 1).padStart(2, '0')}</h3>
-                <p class="rec-title">${p.destination}</p>
-                <p class="rec-advice">Wage Gain: +$${p.wage_gain.toLocaleString()} (${Math.round(p.wage_gain_pct * 100)}%) | Similarity: ${p.similarity_rating ? p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1) : '—'} | Strandedness Change: ${Math.round(p.diff_strandedness * 100)}%</p>
-              </div>
-            `).join('')}
-
-            <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
-          </div>
-
-          <script>window.print();</script>
-        </body>
-      </html>
-    `;
     const win = window.open('', '_blank');
     win?.document.write(reportHtml);
     win?.document.close();
   };
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
 
   if (isLoading) {
     return (
@@ -715,8 +605,34 @@ const App = () => {
     );
   }
 
+  // Treemap layout computation for Section 02
+  const treemapTotal = stats.lw + stats.ue + stats.st;
+  const treemapItems: { key: CohortType; label: string; value: number; pct: number; color: string; selectedColor: string; textColor: string; tooltip: string }[] = [
+    {
+      key: 'Low Wage', label: 'Low Wage', value: stats.lw,
+      pct: treemapTotal > 0 ? (stats.lw / treemapTotal) * 100 : 33,
+      color: 'bg-blue-100 border-blue-200', selectedColor: 'bg-blue-600 border-blue-700',
+      textColor: 'text-blue-900', tooltip: 'Workers earning annual wages below $30,493 (two-thirds of MIT Living Wage for Tennessee). These workers struggle to meet basic living expenses despite being employed.'
+    },
+    {
+      key: 'Underemployed', label: 'Underemployed', value: stats.ue,
+      pct: treemapTotal > 0 ? (stats.ue / treemapTotal) * 100 : 33,
+      color: 'bg-amber-100 border-amber-200', selectedColor: 'bg-amber-500 border-amber-600',
+      textColor: 'text-amber-900', tooltip: 'Workers whose education exceeds their job requirements by 2+ levels (Associate\'s or below) or 1+ level (Bachelor\'s or above), AND earning $45,739 or less annually.'
+    },
+    {
+      key: 'Stalled', label: 'Career Stalled', value: Math.round(stats.st),
+      pct: treemapTotal > 0 ? (stats.st / treemapTotal) * 100 : 34,
+      color: 'bg-emerald-100 border-emerald-200', selectedColor: 'bg-emerald-500 border-emerald-600',
+      textColor: 'text-emerald-900', tooltip: 'Workers who have remained in the same low-wage job for 3+ years without meaningful wage progression. Economically stuck — employed but unable to advance.'
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-20 font-['Inter']">
+      {/* ================================================================
+          NAV BAR
+          ================================================================ */}
       <nav className="bg-[#1E3A8A] text-white py-4 px-4 md:py-6 md:px-10 shadow-xl sticky top-0 z-50 flex flex-col md:flex-row items-start md:items-center justify-between border-b-4 border-amber-500 gap-4 md:gap-0">
         <div className="flex items-center gap-3 md:gap-5">
           <div className="p-2 md:p-3 bg-white/10 rounded-2xl shadow-inner backdrop-blur-md">
@@ -727,17 +643,18 @@ const App = () => {
             <p className="text-[9px] md:text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Tennessee BGI Policy Dashboard</p>
           </div>
         </div>
-        <button
-          onClick={handleExportBrief}
-          className="flex items-center gap-2 md:gap-3 bg-white hover:bg-slate-100 text-blue-950 px-4 py-2 md:px-8 md:py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group w-full md:w-auto justify-center"
-        >
-          <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:translate-y-0.5 transition-transform" /> <span className="hidden sm:inline">Export Executive Brief</span><span className="sm:hidden">Export Brief</span>
+        <button onClick={handleExportBrief}
+          className="flex items-center gap-2 md:gap-3 bg-white hover:bg-slate-100 text-blue-950 px-4 py-2 md:px-8 md:py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group w-full md:w-auto justify-center">
+          <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:translate-y-0.5 transition-transform" />
+          <span className="hidden sm:inline">Export Executive Brief</span><span className="sm:hidden">Export Brief</span>
         </button>
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 md:px-10 py-8 md:py-12 space-y-12 md:space-y-24">
 
-        {/* Step 1: Selection */}
+        {/* ================================================================
+            SECTION 01: REGIONAL & SECTOR SCOPE
+            ================================================================ */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">01</div>
@@ -746,17 +663,13 @@ const App = () => {
               <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Baseline Diagnostic Definition</p>
             </div>
           </div>
-
           <div className="grid grid-cols-12 gap-10">
             <div className="col-span-12 lg:col-span-7">
               <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
                   <MapPin size={12} className="text-blue-500" /> Geography
                 </h4>
-                <TennesseeMap
-                  selectedRegion={geography}
-                  onRegionClick={setGeography}
-                />
+                <TennesseeMap selectedRegion={geography} onRegionClick={setGeography} />
               </div>
             </div>
             <div className="col-span-12 lg:col-span-5 flex flex-col justify-center gap-6">
@@ -765,16 +678,11 @@ const App = () => {
                   <Briefcase size={14} className="text-blue-500" /> NAICS Sector
                 </label>
                 <div className="relative">
-                  <select
-                    value={sector}
-                    onChange={(e) => setSector(e.target.value)}
-                    className="w-full bg-[#F8FAFC] border-2 border-slate-100 rounded-[24px] px-8 py-5 text-sm font-black appearance-none focus:border-blue-500 transition-all outline-none pr-16"
-                  >
+                  <select value={sector} onChange={(e) => setSector(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border-2 border-slate-100 rounded-[24px] px-8 py-5 text-sm font-black appearance-none focus:border-blue-500 transition-all outline-none pr-16">
                     {sectors.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
-                    <ChevronDown size={24} />
-                  </div>
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><ChevronDown size={24} /></div>
                 </div>
                 <div className="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                   <div className="p-5 md:p-6 bg-blue-900 rounded-[24px] md:rounded-[32px] text-white">
@@ -783,7 +691,7 @@ const App = () => {
                   </div>
                   <div className="p-5 md:p-6 bg-amber-500 rounded-[24px] md:rounded-[32px] text-blue-950">
                     <p className="text-[10px] font-black text-blue-950/40 uppercase tracking-widest mb-2">Stranded Rate</p>
-                    <p className="text-2xl md:text-3xl font-black">{((stats.lw / stats.total) * 100).toFixed(0)}%</p>
+                    <p className="text-2xl md:text-3xl font-black">{stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(0) : 0}%</p>
                   </div>
                 </div>
               </div>
@@ -791,71 +699,64 @@ const App = () => {
           </div>
         </section>
 
-        {/* Step 2: Landscape */}
+        {/* ================================================================
+            SECTION 02: THE STRANDED LANDSCAPE (Treemap + Diagnostics)
+            ================================================================ */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">02</div>
             <div>
               <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">The Stranded Landscape</h2>
-              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Cohort Identification & Intersection</p>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Mutually Exclusive Cohort Identification</p>
             </div>
           </div>
 
           <div className="grid grid-cols-12 gap-10">
-            <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200 flex items-center justify-center">
-              <div className="relative w-64 h-64 sm:w-80 sm:h-80">
-                <div
-                  onClick={() => setSelectedCohort('Low Wage')}
-                  onMouseEnter={(e) => e.currentTarget.dataset.tooltip = 'show'}
-                  onMouseLeave={(e) => e.currentTarget.dataset.tooltip = 'hide'}
-                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 left-0 hover:z-30 group ${
-                    selectedCohort === 'Low Wage' ? 'bg-blue-600/40 border-blue-600 z-20 scale-105 shadow-xl' : 'bg-blue-500/5 border-blue-200 opacity-60'
-                  }`}
-                >
-                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'}`}>Low Wage</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Low Wage' ? 'text-blue-900' : 'text-slate-400'} absolute top-12 sm:top-16 left-6 sm:left-8`}>{stats.lw.toLocaleString()}</span>
-                  <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 top-1/2 -translate-y-1/2 left-full ml-4 pointer-events-none">
-                    <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">Low Wage Workers</div>
-                    <div className="text-xs leading-relaxed">Workers earning annual wages below $30,493 (two-thirds of MIT Living Wage for Tennessee). These workers struggle to meet basic living expenses despite being employed full-time.</div>
-                    <div className="absolute top-1/2 -translate-y-1/2 -left-2 w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-r-8 border-r-slate-900"></div>
-                  </div>
-                </div>
-                <div
-                  onClick={() => setSelectedCohort('Underemployed')}
-                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center top-0 right-0 hover:z-30 group ${
-                    selectedCohort === 'Underemployed' ? 'bg-amber-500/40 border-amber-600 z-20 scale-105 shadow-xl' : 'bg-amber-500/5 border-amber-200 opacity-60'
-                  }`}
-                >
-                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -top-6 sm:-top-8 ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'}`}>Underemployed</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Underemployed' ? 'text-amber-900' : 'text-slate-400'} absolute top-12 sm:top-16 right-6 sm:right-8`}>{stats.ue.toLocaleString()}</span>
-                  <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 top-1/2 -translate-y-1/2 right-full mr-4 pointer-events-none">
-                    <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">Underemployed Workers</div>
-                    <div className="text-xs leading-relaxed">Workers whose education level exceeds the typical requirements for their occupation by at least 2 levels (for Associate's or below) or 1 level (for Bachelor's or above), AND earn $45,739 or less annually (MIT Living Wage ceiling). These workers have credentials that aren't being fully utilized.</div>
-                    <div className="absolute top-1/2 -translate-y-1/2 -right-2 w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-l-8 border-l-slate-900"></div>
-                  </div>
-                </div>
-                <div
-                  onClick={() => setSelectedCohort('Stalled')}
-                  className={`absolute w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center bottom-0 left-1/2 -translate-x-1/2 hover:z-30 group ${
-                    selectedCohort === 'Stalled' ? 'bg-emerald-500/40 border-emerald-600 z-20 scale-105 shadow-xl' : 'bg-emerald-500/5 border-emerald-200 opacity-60'
-                  }`}
-                >
-                  <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-widest absolute -bottom-6 sm:-bottom-8 ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'}`}>Stalled</span>
-                  <span className={`text-xl sm:text-2xl font-black ${selectedCohort === 'Stalled' ? 'text-emerald-900' : 'text-slate-400'} absolute bottom-12 sm:bottom-16`}>{Math.round(stats.st).toLocaleString()}</span>
-                  <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-4 left-1/2 -translate-x-1/2 pointer-events-none">
-                    <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">Stalled Workers</div>
-                    <div className="text-xs leading-relaxed">Workers who have remained in the same low-wage job for 3 or more years without meaningful wage progression. These workers are economically stuck — employed, but unable to advance their careers or earnings.</div>
-                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900"></div>
-                  </div>
-                </div>
+            {/* Treemap (replaces Venn diagram) */}
+            <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-6">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <BarChart3 size={12} className="text-blue-500" /> Stranded Worker Cohorts
+                </h4>
+                <button onClick={() => setSelectedCohort('All Stranded')}
+                  className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full transition-all ${
+                    selectedCohort === 'All Stranded' ? 'bg-blue-900 text-white' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>
+                  All Stranded ({Math.round(treemapTotal).toLocaleString()})
+                </button>
+              </div>
+
+              <div className="flex gap-2 h-48 sm:h-64">
+                {treemapItems.map(item => {
+                  const isActive = selectedCohort === item.key || selectedCohort === 'All Stranded';
+                  const isExact = selectedCohort === item.key;
+                  return (
+                    <div key={item.key}
+                      onClick={() => setSelectedCohort(item.key)}
+                      className={`relative rounded-2xl border-2 cursor-pointer transition-all duration-300 overflow-hidden group flex flex-col justify-between p-4 ${
+                        isExact ? `${item.selectedColor} shadow-xl scale-[1.02]` : isActive ? `${item.color} hover:shadow-lg` : `${item.color} opacity-50 hover:opacity-80`}`}
+                      style={{ width: `${Math.max(item.pct, 18)}%` }}>
+                      <div>
+                        <p className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${isExact ? 'text-white/80' : item.textColor + '/60'}`}>{item.label}</p>
+                        <p className={`text-lg sm:text-2xl font-black mt-1 ${isExact ? 'text-white' : item.textColor}`}>{item.value.toLocaleString()}</p>
+                        <p className={`text-[9px] font-bold mt-0.5 ${isExact ? 'text-white/60' : item.textColor + '/40'}`}>{item.pct.toFixed(0)}% of stranded</p>
+                      </div>
+                      {/* Tooltip on hover */}
+                      <div className="invisible group-hover:visible absolute z-50 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                        <div className="text-xs font-black uppercase tracking-wider text-amber-400 mb-2">{item.label} Workers</div>
+                        <div className="text-xs leading-relaxed">{item.tooltip}</div>
+                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900"></div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Diagnostics panel */}
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
               {selectedCohort === 'Stalled' ? (
                 <>
-                  {/* Occupational Mix of Stalled Talent */}
                   <div className="space-y-6">
                     <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Briefcase size={14} className="text-emerald-500"/> Occupational Mix</p>
                     <div className="space-y-5">
@@ -863,11 +764,9 @@ const App = () => {
                         ? stalledBreakdowns.occMix.slice(0, 6).map(([label, val]) => (
                             <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(stalledBreakdowns.occMix[0][1])} colorClass="bg-emerald-500" />
                           ))
-                        : <p className="text-xs text-slate-400 italic">No stalled workers in this selection.</p>
-                      }
+                        : <p className="text-xs text-slate-400 italic">No stalled workers in this selection.</p>}
                     </div>
                   </div>
-                  {/* Stall Duration Distribution */}
                   <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
                     <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14} className="text-emerald-700"/> Stall Duration</p>
                     <div className="space-y-5">
@@ -914,7 +813,9 @@ const App = () => {
           </div>
         </section>
 
-        {/* Step 3: Occupational Selection */}
+        {/* ================================================================
+            SECTION 03: OCCUPATIONAL SELECTION
+            ================================================================ */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">03</div>
@@ -927,13 +828,9 @@ const App = () => {
           <div className="bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
               {cohortBreakdowns.occ.slice(0, 10).map(([occ, val]) => (
-                <div
-                  key={occ}
-                  onClick={() => setTargetOccupation(occ)}
+                <div key={occ} onClick={() => setTargetOccupation(occ)}
                   className={`p-5 md:p-6 rounded-[24px] md:rounded-[32px] border-2 cursor-pointer transition-all duration-300 ${
-                    targetOccupation === occ ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300'
-                  }`}
-                >
+                    targetOccupation === occ ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300'}`}>
                   <p className={`font-black uppercase tracking-tighter text-xs md:text-sm mb-3 md:mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
                   <div className="flex justify-between items-center">
                     <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
@@ -951,7 +848,7 @@ const App = () => {
                 <p className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2">
                   <Target size={14} className="text-blue-500" /> Occupation Diagnostics: {targetOccupation}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 md:gap-6">
                   <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
                     <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Stranded Share</p>
                     <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.strandedShare * 100).toFixed(1)}%</p>
@@ -967,8 +864,19 @@ const App = () => {
                     <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.partTimeShare * 100).toFixed(1)}%</p>
                     <p className="text-[9px] text-slate-400 mt-1">working part-time in this occupation</p>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-56 text-center z-50 shadow-lg">
-                      Share of workers in this occupation working part-time, among those working at least 15 hours per week.
+                      Share of workers working part-time, among those working at least 15 hours per week.
                     </div>
+                  </div>
+                  {/* TN Demand for this occupation */}
+                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
+                    <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">TN Demand</p>
+                    <DemandBadge occupation={targetOccupation} sector={sector} />
+                    {(() => {
+                      const growth = growthByOcc.get(targetOccupation);
+                      return growth?.share_growth_trend ? (
+                        <p className="text-[9px] text-slate-400 mt-2">Trend: {growth.share_growth_trend}</p>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               </div>
@@ -976,7 +884,9 @@ const App = () => {
           </div>
         </section>
 
-        {/* Step 4: Policy Roadmap — Career Pathways */}
+        {/* ================================================================
+            SECTION 04: POLICY ROADMAP — CAREER PATHWAYS
+            ================================================================ */}
         <section className="space-y-6 md:space-y-10">
           <div className="flex items-center gap-3 md:gap-4 border-b-2 border-slate-200 pb-4 md:pb-6">
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">04</div>
@@ -990,24 +900,14 @@ const App = () => {
           <div className="flex items-center gap-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-3 hidden sm:block">Pathway Mode</p>
             <div className="inline-flex rounded-full bg-slate-100 p-1 border border-slate-200">
-              <button
-                onClick={() => setPathwayMode('transitions')}
+              <button onClick={() => setPathwayMode('transitions')}
                 className={`px-4 md:px-6 py-2 md:py-2.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${
-                  pathwayMode === 'transitions'
-                    ? 'bg-blue-900 text-white shadow-lg'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
+                  pathwayMode === 'transitions' ? 'bg-blue-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>
                 Historically Common Transitions
               </button>
-              <button
-                onClick={() => setPathwayMode('similarity')}
+              <button onClick={() => setPathwayMode('similarity')}
                 className={`px-4 md:px-6 py-2 md:py-2.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${
-                  pathwayMode === 'similarity'
-                    ? 'bg-blue-900 text-white shadow-lg'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
+                  pathwayMode === 'similarity' ? 'bg-blue-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-700'}`}>
                 Jobs with Highly Similar Skills
               </button>
             </div>
@@ -1031,25 +931,19 @@ const App = () => {
               {destinationPathways.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 md:gap-4">
                   {destinationPathways.map((p, i) => {
-                    const wagePct = Math.round(p.wage_gain_pct * 100);
+                    const wagePct = Math.round(p.potential_wage_gain_pct * 100);
                     const strandPct = Math.round(p.diff_strandedness * 100);
-                    const isSelected = selectedDestination === p.destination;
+                    const isSelected = selectedDestination === p.SOC_2019_5_ACS_NAME_TARGET;
                     return (
-                      <div
-                        key={i}
-                        onClick={() => setSelectedDestination(p.destination)}
+                      <div key={i} onClick={() => setSelectedDestination(p.SOC_2019_5_ACS_NAME_TARGET)}
                         className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border-2 cursor-pointer transition-all duration-300 ${
-                          isSelected
-                            ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1'
-                            : 'bg-white border-slate-100 hover:border-blue-300 hover:shadow-sm'
-                        }`}
-                      >
-                        <p className={`text-xs md:text-sm font-black leading-snug mb-3 ${isSelected ? 'text-blue-200' : 'text-slate-800'}`}>{p.destination}</p>
+                          isSelected ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300 hover:shadow-sm'}`}>
+                        <p className={`text-xs md:text-sm font-black leading-snug mb-3 ${isSelected ? 'text-blue-200' : 'text-slate-800'}`}>{p.SOC_2019_5_ACS_NAME_TARGET}</p>
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Wage Gain</span>
                             <span className={`text-[11px] md:text-xs font-black ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`}>
-                              +${p.wage_gain.toLocaleString()} ({wagePct > 0 ? `+${wagePct}` : wagePct}%)
+                              +${p.potential_wage_gain.toLocaleString()} ({wagePct > 0 ? `+${wagePct}` : wagePct}%)
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
@@ -1058,10 +952,10 @@ const App = () => {
                               {strandPct < 0 ? `${strandPct}%` : `+${strandPct}%`}
                             </span>
                           </div>
-                          {pathwayMode === 'transitions' && p.at_year_5 > 0 && (
+                          {pathwayMode === 'transitions' && (p.at_year_5_national || 0) > 0 && (
                             <div className="flex items-center justify-between">
                               <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Observed</span>
-                              <span className={`text-[11px] md:text-xs font-black ${isSelected ? 'text-white' : 'text-slate-700'}`}>{p.at_year_5} workers</span>
+                              <span className={`text-[11px] md:text-xs font-black ${isSelected ? 'text-white' : 'text-slate-700'}`}>{p.at_year_5_national} workers</span>
                             </div>
                           )}
                           <div className="flex items-center justify-between">
@@ -1071,6 +965,11 @@ const App = () => {
                               p.similarity_rating === 'medium' ? (isSelected ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-700') :
                               (isSelected ? 'bg-red-400/20 text-red-300' : 'bg-red-100 text-red-700')
                             }`}>{p.similarity_rating ? p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1) : '—'}</span>
+                          </div>
+                          {/* Demand badge for destination */}
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>TN Demand</span>
+                            <DemandBadge occupation={p.SOC_2019_5_ACS_NAME_TARGET} sector={sector} compact isSelected={isSelected} />
                           </div>
                         </div>
                       </div>
@@ -1086,18 +985,17 @@ const App = () => {
             </div>
           )}
 
-          {/* 4c. Strategy Recommendations (when destination is selected) */}
+          {/* ================================================================
+              4c. Strategy Recommendations (when destination is selected)
+              ================================================================ */}
           {targetOccupation && selectedDestination && selectedDestRow && (
             <div className="grid grid-cols-12 gap-10">
               <div className="col-span-12 lg:col-span-7 space-y-4 md:space-y-6">
 
                 {/* Strategy 1: Career Advancement Pathways (Skill Gaps) */}
-                <div
-                  onClick={() => setExpandedRec(expandedRec === 0 ? null : 0)}
+                <div onClick={() => setExpandedRec(expandedRec === 0 ? null : 0)}
                   className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
-                    expandedRec === 0 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
-                  }`}
-                >
+                    expandedRec === 0 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'}`}>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <BarChart3 size={18} className={expandedRec === 0 ? 'text-blue-600' : 'text-slate-300'} />
@@ -1106,7 +1004,7 @@ const App = () => {
                     <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 0 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
                   {expandedRec === 0 && (
-                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                    <div className="mt-6 md:mt-8" onClick={e => e.stopPropagation()}>
                       <p className="text-sm text-slate-600 mb-4">
                         Based on BGI analysis of job postings data, these are the top skills that workers in <span className="font-bold">{targetOccupation}</span> roles
                         would need to develop to transition into <span className="font-bold">{selectedDestination}</span> positions.
@@ -1118,7 +1016,7 @@ const App = () => {
                           {selectedSkillGaps.slice(0, 5).map((s, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                               <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs flex-shrink-0">{i + 1}</div>
-                              <p className="text-sm font-bold text-slate-700">{s.skill}</p>
+                              <p className="text-sm font-bold text-slate-700">{s.SKILL_NAME}</p>
                             </div>
                           ))}
                         </div>
@@ -1130,12 +1028,9 @@ const App = () => {
                 </div>
 
                 {/* Strategy 2: Credentials & Licensing */}
-                <div
-                  onClick={() => setExpandedRec(expandedRec === 1 ? null : 1)}
+                <div onClick={() => setExpandedRec(expandedRec === 1 ? null : 1)}
                   className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
-                    expandedRec === 1 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
-                  }`}
-                >
+                    expandedRec === 1 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'}`}>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <GraduationCap size={18} className={expandedRec === 1 ? 'text-blue-600' : 'text-slate-300'} />
@@ -1144,75 +1039,94 @@ const App = () => {
                     <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 1 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
                   {expandedRec === 1 && (
-                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                    <div className="mt-6 md:mt-8" onClick={e => e.stopPropagation()}>
                       {(() => {
                         const destLicenses = selectedDestination ? tnLicenses[selectedDestination] : undefined;
-                        if (destLicenses && destLicenses.length > 0) {
-                          return (
-                            <div className="space-y-4">
-                              <p className="text-sm text-slate-600 font-medium">
-                                Tennessee requires occupational licensing for professionals in <span className="font-bold">{selectedDestination}</span> roles.
-                                Workers transitioning into this field should be aware of the following state requirements:
-                              </p>
-                              {destLicenses.map((lic, i) => (
-                                <div key={i} className="flex items-center gap-4 p-4 bg-amber-50 rounded-2xl border border-amber-200">
-                                  <GraduationCap size={18} className="text-amber-700 flex-shrink-0" />
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <h4 className="text-sm font-black text-slate-800">{lic.profession}</h4>
-                                      {lic.regulation && <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full uppercase">{lic.regulation}</span>}
+                        const destCommonCreds = selectedDestination ? commonCredentials[selectedDestination] : undefined;
+                        const hasStatutory = destLicenses && destLicenses.length > 0;
+                        const hasCommon = destCommonCreds && destCommonCreds.length > 0;
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Statutory requirements */}
+                            {hasStatutory && (
+                              <>
+                                <p className="text-sm text-slate-600 font-medium">
+                                  Tennessee requires occupational licensing for professionals in <span className="font-bold">{selectedDestination}</span> roles:
+                                </p>
+                                {destLicenses!.map((lic, i) => (
+                                  <div key={i} className="flex items-center gap-4 p-4 bg-amber-50 rounded-2xl border border-amber-200">
+                                    <GraduationCap size={18} className="text-amber-700 flex-shrink-0" />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="text-sm font-black text-slate-800">{lic.profession}</h4>
+                                        <span className="text-[9px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase">Required by TN Law</span>
+                                        {lic.regulation && <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full uppercase">{lic.regulation}</span>}
+                                      </div>
+                                      {lic.degree && lic.degree !== 'None' && (
+                                        <p className="text-xs text-slate-500 mt-1">Requires: <span className="font-bold text-slate-700">{lic.degree}</span></p>
+                                      )}
                                     </div>
-                                    {lic.degree && lic.degree !== 'None' && (
-                                      <p className="text-xs text-slate-500 mt-1">Requires: <span className="font-bold text-slate-700">{lic.degree}</span></p>
-                                    )}
                                   </div>
-                                </div>
-                              ))}
-                              {credentialSkills.length > 0 && (
-                                <div className="mt-2">
-                                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Related credentials from job postings</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {credentialSkills.map((s, i) => (
-                                      <span key={i} className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded-full">{s.skill}</span>
-                                    ))}
+                                ))}
+                              </>
+                            )}
+
+                            {/* Common industry expectations */}
+                            {hasCommon && (
+                              <>
+                                <p className="text-sm text-slate-600 font-medium mt-2">
+                                  {hasStatutory ? 'Additionally, employers' : 'While no TN state license is required, employers'} commonly expect the following credentials for <span className="font-bold">{selectedDestination}</span> roles:
+                                </p>
+                                {destCommonCreds!.map((cred, i) => (
+                                  <div key={i} className="flex items-center gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-200">
+                                    <FileText size={18} className="text-blue-600 flex-shrink-0" />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="text-sm font-black text-slate-800">{cred.credential}</h4>
+                                        <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">Commonly Expected</span>
+                                      </div>
+                                      <p className="text-xs text-slate-500 mt-1">{cred.description}</p>
+                                    </div>
                                   </div>
+                                ))}
+                              </>
+                            )}
+
+                            {/* Credential-related skills from job postings */}
+                            {credentialSkills.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Related credentials from job postings</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {credentialSkills.map((s, i) => (
+                                    <span key={i} className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded-full">{s.SKILL_NAME}</span>
+                                  ))}
                                 </div>
-                              )}
-                              <p className="text-xs text-slate-400 mt-2">Source: Knee Center for the Study of Occupational Regulation, Tennessee state data (2025).</p>
-                            </div>
-                          );
-                        } else if (credentialSkills.length > 0) {
-                          return (
-                            <div className="space-y-3">
-                              <p className="text-sm text-slate-600 font-medium mb-4">No Tennessee state license is required for {selectedDestination}, but the following credential-related skills were identified from job postings analysis:</p>
-                              {credentialSkills.map((s, i) => (
-                                <div key={i} className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                                  <FileText size={14} className="text-amber-600 flex-shrink-0" />
-                                  <p className="text-sm font-black text-slate-800">{s.skill}</p>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        } else {
-                          return (
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                              <p className="text-sm text-slate-600 font-medium">No Tennessee state license or specific credential requirements were identified for {selectedDestination}.</p>
-                              <p className="text-xs text-slate-400 mt-2">This occupation does not appear in the Knee Center's Tennessee occupational licensing database. We recommend checking industry certification bodies for voluntary credentials that may improve employability.</p>
-                            </div>
-                          );
-                        }
+                              </div>
+                            )}
+
+                            {/* Fallback if nothing found */}
+                            {!hasStatutory && !hasCommon && credentialSkills.length === 0 && (
+                              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <p className="text-sm text-slate-600 font-medium">No Tennessee state license or specific credential requirements were identified for {selectedDestination}.</p>
+                                <p className="text-xs text-slate-400 mt-2">This occupation does not appear in the Knee Center's Tennessee occupational licensing database, and no common industry credentials were identified. We recommend checking industry certification bodies for voluntary credentials that may improve employability.</p>
+                              </div>
+                            )}
+
+                            {(hasStatutory || hasCommon) && (
+                              <p className="text-xs text-slate-400 mt-2">Sources: Knee Center for the Study of Occupational Regulation (TN state data, 2025); BGI job postings analysis; industry standards research.</p>
+                            )}
+                          </div>
+                        );
                       })()}
                     </div>
                   )}
                 </div>
 
                 {/* Strategy 3: Employer Mobility Within Occupation */}
-                <div
-                  onClick={() => setExpandedRec(expandedRec === 2 ? null : 2)}
+                <div onClick={() => setExpandedRec(expandedRec === 2 ? null : 2)}
                   className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
-                    expandedRec === 2 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
-                  }`}
-                >
+                    expandedRec === 2 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'}`}>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <Briefcase size={18} className={expandedRec === 2 ? 'text-blue-600' : 'text-slate-300'} />
@@ -1221,7 +1135,7 @@ const App = () => {
                     <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 2 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
                   {expandedRec === 2 && (
-                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                    <div className="mt-6 md:mt-8" onClick={e => e.stopPropagation()}>
                       {occupationDiagnostics && (
                         <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
                           <p className="text-sm md:text-base text-slate-700 leading-relaxed font-medium">
@@ -1244,12 +1158,9 @@ const App = () => {
                 </div>
 
                 {/* Strategy 4: Cross-Pathway Skill Acquisition */}
-                <div
-                  onClick={() => setExpandedRec(expandedRec === 3 ? null : 3)}
+                <div onClick={() => setExpandedRec(expandedRec === 3 ? null : 3)}
                   className={`p-6 md:p-10 rounded-[24px] md:rounded-[40px] border-2 cursor-pointer transition-all duration-300 ${
-                    expandedRec === 3 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'
-                  }`}
-                >
+                    expandedRec === 3 ? 'bg-white border-blue-600 shadow-xl' : 'bg-slate-50 border-transparent hover:bg-white hover:border-blue-200'}`}>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <Layers size={18} className={expandedRec === 3 ? 'text-blue-600' : 'text-slate-300'} />
@@ -1258,7 +1169,7 @@ const App = () => {
                     <ChevronDown className={`transition-transform duration-300 flex-shrink-0 ${expandedRec === 3 ? 'rotate-180 text-blue-600' : 'text-slate-300'}`} />
                   </div>
                   {expandedRec === 3 && (
-                    <div className="mt-6 md:mt-8 animate-in fade-in slide-in-from-top-4">
+                    <div className="mt-6 md:mt-8" onClick={e => e.stopPropagation()}>
                       <p className="text-sm text-slate-600 font-medium mb-4">
                         Skills that appear as gaps across multiple destination pathways for {pluralize(targetOccupation)}. Investing in these skills maximizes career flexibility.
                       </p>
@@ -1290,28 +1201,19 @@ const App = () => {
                 <div className="bg-[#1E3A8A] text-white p-6 md:p-12 rounded-[32px] md:rounded-[50px] shadow-2xl relative overflow-hidden h-full flex flex-col border-t-4 md:border-t-8 border-amber-500">
                   <div className="relative z-10">
                     <h3 className="text-xl md:text-2xl font-black leading-tight mb-6 md:mb-8 tracking-tighter uppercase text-amber-400">Target Group Profile</h3>
-
                     <div className="mb-6 md:mb-10 space-y-3 md:space-y-4">
-                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Region</span>
-                        <span className="font-bold text-xs md:text-sm">{geography}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Sector</span>
-                        <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{sector}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Origin</span>
-                        <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px]">{targetOccupation}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Destination</span>
-                        <span className="font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px] text-amber-400">{selectedDestination}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
-                        <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">Cohort</span>
-                        <span className="font-bold text-xs md:text-sm">{selectedCohort}</span>
-                      </div>
+                      {[
+                        ['Region', geography],
+                        ['Sector', sector],
+                        ['Origin', targetOccupation],
+                        ['Destination', selectedDestination],
+                        ['Cohort', selectedCohort],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex justify-between border-b border-white/10 pb-2 md:pb-3">
+                          <span className="text-blue-300 text-[9px] md:text-[10px] uppercase font-bold tracking-widest">{label}</span>
+                          <span className={`font-bold text-xs md:text-sm truncate max-w-[150px] md:max-w-[200px] ${label === 'Destination' ? 'text-amber-400' : ''}`}>{value}</span>
+                        </div>
+                      ))}
                     </div>
 
                     <div className="space-y-6 md:space-y-10">
@@ -1321,9 +1223,9 @@ const App = () => {
                         </div>
                         <div>
                           <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Wage Gain</p>
-                          <p className="text-2xl md:text-3xl font-black">+${selectedDestRow.wage_gain.toLocaleString()}</p>
+                          <p className="text-2xl md:text-3xl font-black">+${selectedDestRow.potential_wage_gain.toLocaleString()}</p>
                           <p className="text-[10px] text-blue-300 mt-1">
-                            {Math.round(selectedDestRow.wage_gain_pct * 100)}% increase &bull; To ${selectedDestRow.a_median_destination.toLocaleString()}/yr
+                            {Math.round(selectedDestRow.potential_wage_gain_pct * 100)}% increase &bull; To ${selectedDestRow.a_median_TARGET.toLocaleString()}/yr
                           </p>
                         </div>
                       </div>
@@ -1337,7 +1239,7 @@ const App = () => {
                             {Math.round(selectedDestRow.diff_strandedness * 100)}%
                           </p>
                           <p className="text-[10px] text-blue-300 mt-1">
-                            Destination stranded rate: {(selectedDestRow.share_stranded_destination * 100).toFixed(1)}%
+                            Destination stranded rate: {(selectedDestRow.share_stranded_TARGET * 100).toFixed(1)}%
                           </p>
                         </div>
                       </div>
@@ -1348,6 +1250,21 @@ const App = () => {
                         <div>
                           <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Skill Similarity</p>
                           <p className="text-2xl md:text-3xl font-black capitalize">{selectedDestRow.similarity_rating || '—'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                          <Flame size={24} className="md:w-7 md:h-7" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">TN Demand</p>
+                          <DemandBadge occupation={selectedDestination} sector={sector} />
+                          {(() => {
+                            const growth = growthByOcc.get(selectedDestination);
+                            return growth?.share_growth_trend ? (
+                              <p className="text-[10px] text-blue-300 mt-1">Trend: {growth.share_growth_trend}</p>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 md:gap-8">
@@ -1365,13 +1282,12 @@ const App = () => {
               </div>
             </div>
           )}
-
         </section>
 
       </main>
 
       <footer className="max-w-7xl mx-auto px-4 md:px-10 py-8 md:py-16 border-t border-slate-200 text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center flex flex-col md:flex-row justify-between items-center gap-4 md:gap-0">
-        <span className="text-center md:text-left">BGI Data Analytics © 2025 | Tennessee Strategic Workforce Dashboard</span>
+        <span className="text-center md:text-left">BGI Data Analytics &copy; 2026 | Tennessee Strategic Workforce Dashboard</span>
         <div className="flex gap-6 md:gap-10">
           <a href="#" className="hover:text-blue-600">Methodology</a>
           <a href="#" className="hover:text-blue-600">Source Data</a>
