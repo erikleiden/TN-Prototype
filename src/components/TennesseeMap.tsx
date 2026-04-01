@@ -3,7 +3,7 @@ import { geoPath, geoAlbersUsa } from 'd3-geo';
 import countyBoundaries from '../data/tn-counties.json';
 import countyMapping from '../data/county-msa-mapping.json';
 
-type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural';
+type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA';
 
 interface TennesseeMapProps {
   selectedRegion: MSACategory | 'All';
@@ -41,12 +41,13 @@ const TennesseeMap: React.FC<TennesseeMapProps> = ({ selectedRegion, onRegionCli
       'Knoxville': [],
       'Chattanooga': [],
       'Other MSA': [],
-      'Rural': []
     };
 
     (countyBoundaries as any).features.forEach((feature: CountyFeature) => {
       const countyName = feature.properties.NAME;
-      const msaCategory = (countyMapping as any)[countyName] || 'Rural';
+      let msaCategory = (countyMapping as any)[countyName] || 'Other MSA';
+      // Merge any legacy 'Rural' into 'Other MSA'
+      if (msaCategory === 'Rural') msaCategory = 'Other MSA';
       groups[msaCategory].push(feature);
     });
 
@@ -70,14 +71,13 @@ const TennesseeMap: React.FC<TennesseeMapProps> = ({ selectedRegion, onRegionCli
       'Knoxville': '#10B981',    // Emerald
       'Chattanooga': '#EF4444',  // Red
       'Other MSA': '#06B6D4',    // Cyan
-      'Rural': '#94A3B8'         // Slate
     };
 
     return baseColors[region];
   };
 
   // Region order for legend
-  const regionOrder: MSACategory[] = ['Nashville', 'Memphis', 'Knoxville', 'Chattanooga', 'Other MSA', 'Rural'];
+  const regionOrder: MSACategory[] = ['Nashville', 'Memphis', 'Knoxville', 'Chattanooga', 'Other MSA'];
 
   return (
     <div className="space-y-6">

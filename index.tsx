@@ -28,11 +28,11 @@ import {
   ArrowRight, ChevronDown, LayoutDashboard, BarChart3, Layers,
   FileText, TrendingUp, Map as MapIcon, Flame, Activity
 } from 'lucide-react';
-import Papa from 'papaparse';
 import TennesseeMap from './src/components/TennesseeMap';
 
 // --- Static data imports (bundled at build time by Vite) ---
 import crossTabulatedRaw from './src/data/cross_tabulated_data.json';
+import stallDurationRaw from './src/data/stall_duration.json';
 import occSimilarityRaw from './src/data/occ_similarity.json';
 import nationalTransitionsRaw from './src/data/national_transitions.json';
 import skillGapsTop5Raw from './src/data/skill_gaps_top5.json';
@@ -45,22 +45,37 @@ import commonCredsRaw from './src/data/common_credentials.json';
 // TYPES
 // ============================================================================
 
-type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'Rural' | 'All';
+type MSACategory = 'Nashville' | 'Memphis' | 'Knoxville' | 'Chattanooga' | 'Other MSA' | 'All';
 type CohortType = 'Low Wage' | 'Underemployed' | 'Stalled' | 'All Stranded';
 
-/** A row from cross_tabulated_data.json (worker microdata) */
+/** A row from cross_tabulated_data.json (SOC x NAICS2 x MSA crosstab) */
 interface DataRow {
+  SOC_2019_5_ACS: string;
   SOC_2019_5_ACS_NAME: string;
+  naics2: string;
   naics2_title: string;
   msa_category: string;
-  age_group: string;
-  education_level_label: string;
-  part_time: boolean | number | null;
-  n_weighted: number;
-  n_stranded_weighted: number;
-  n_low_wage_weighted: number;
-  n_underemployed_weighted: number;
-  median_wage: number | null;
+  estimated_stalled_only: number;
+  oews_calibrated_employment: number;
+  estimated_stalled: number;
+  estimated_low_wage: number;
+  estimated_underemployed: number;
+  estimated_stalled_low_wage: number;
+  estimated_stalled_underempl: number;
+  estimated_stalled_both: number;
+  n_pdl_current: number;
+}
+
+/** A row from stall_duration.json (NAICS2 x MSA tenure histogram) */
+interface StallDurationRow {
+  naics2: string;
+  naics2_title: string;
+  msa_category: string;
+  estimated_stalled_only: number;
+  'stall_tenure_3-4': number;
+  'stall_tenure_4-5': number;
+  'stall_tenure_5-7': number;
+  'stall_tenure_7-10': number;
 }
 
 /** A row from occ_similarity.json or national_transitions.json */
@@ -135,21 +150,12 @@ interface CredentialEntry {
   description: string;
 }
 
-/** Stalled workers CSV row */
-interface StalledRow {
-  msa_category: string;
-  naics2_title: string;
-  soc2_name: string;
-  soc_2019_5_acs_name: string;
-  n_career_stalled_weighted: number;
-  tenure_years: number;
-}
-
 // ============================================================================
 // DATA SETUP
 // ============================================================================
 
 const crossTabulatedData = crossTabulatedRaw as DataRow[];
+const stallDuration = stallDurationRaw as StallDurationRow[];
 const occSimilarity = occSimilarityRaw as PathwayRow[];
 const nationalTransitions = nationalTransitionsRaw as PathwayRow[];
 const skillGapsTop5 = skillGapsTop5Raw as SkillGapRow[];
@@ -174,20 +180,9 @@ postingDemand.occ_sector.forEach(r => {
 // CONSTANTS
 // ============================================================================
 
-/** Education levels in increasing order of credential */
-const EDUCATION_ORDER = [
-  'Less than HS', 'HS diploma/GED', 'Some college',
-  "Associate's degree", "Bachelor's degree", "Master's degree",
-  'Professional/Doctorate'
-];
-
-const AGE_GROUPS = ['18-24', '25-34', '35-44', '45-54', '55-64'];
-
-/** Stall-duration brackets for the stalled workers analysis */
-const TENURE_BUCKETS: [string, number, number][] = [
-  ['3-4 yrs', 3, 4], ['4-5 yrs', 4, 5], ['5-7 yrs', 5, 7],
-  ['7-10 yrs', 7, 10], ['10+ yrs', 10, Infinity],
-];
+/** Stall-duration brackets (matching pre-binned columns in stall_duration.json) */
+const TENURE_LABELS = ['3-4 yrs', '4-5 yrs', '5-7 yrs', '7-10 yrs'] as const;
+const TENURE_KEYS: (keyof StallDurationRow)[] = ['stall_tenure_3-4', 'stall_tenure_4-5', 'stall_tenure_5-7', 'stall_tenure_7-10'];
 
 /** Regex patterns for matching credential-like skills from job postings */
 const CREDENTIAL_PATTERNS = [
@@ -385,7 +380,7 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
   };
   const colors = colorMap[category] || (isSelected ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-500');
 
-  const trendArrow = trend === 'Growing' ? ' ↑' : trend === 'Declining' ? ' ↓' : trend === 'Stable' ? ' →' : '';
+  const trendArrow = trend?.includes('Growing') ? ' ↑' : trend?.includes('Declining') ? ' ↓' : trend?.includes('Stable') ? ' →' : '';
   // Short label: strip " Demand" suffix for compactness
   const shortLabel = category.replace(' Demand', '') + trendArrow;
 
@@ -406,34 +401,6 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
   );
 };
 
-// ============================================================================
-// STALLED WORKERS CSV LOADER
-// ============================================================================
-
-const loadStalledData = async (): Promise<StalledRow[]> => {
-  try {
-    const response = await fetch('/stalled_workers.csv');
-    const csvText = await response.text();
-    return new Promise((resolve) => {
-      Papa.parse(csvText, {
-        header: true, dynamicTyping: true, skipEmptyLines: true,
-        complete: (results) => {
-          resolve((results.data as any[]).map((r: any) => ({
-            msa_category: r.msa_category || '',
-            naics2_title: r.naics2_title || '',
-            soc2_name: r.soc2_name || '',
-            soc_2019_5_acs_name: r.soc_2019_5_acs_name || '',
-            n_career_stalled_weighted: Number(r.n_career_stalled_weighted) || 0,
-            tenure_years: Number(r.tenure_years) || 0,
-          })));
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error loading stalled data:', error);
-    return [];
-  }
-};
 
 // ============================================================================
 // MAIN APP COMPONENT
@@ -446,18 +413,8 @@ const App = () => {
   const [selectedCohort, setSelectedCohort] = useState<CohortType>('All Stranded');
   const [targetOccupation, setTargetOccupation] = useState<string | null>(null);
   const [expandedRec, setExpandedRec] = useState<number | null>(0);
-  const [stalledData, setStalledData] = useState<StalledRow[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [pathwayMode, setPathwayMode] = useState<'transitions' | 'similarity'>('transitions');
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
-
-  // Load stalled workers CSV on mount (cross-tabulated data is now statically imported)
-  useEffect(() => {
-    loadStalledData().then((stalled) => {
-      setStalledData(stalled);
-      setIsLoading(false);
-    });
-  }, []);
 
   // ============================================================================
   // DERIVED DATA (useMemo hooks)
@@ -478,46 +435,39 @@ const App = () => {
     ),
   [geography, sector]);
 
-  /** Stalled workers filtered by geography and sector */
-  const stalledByScope = useMemo(() =>
-    stalledData.filter(d =>
+  /** Stall duration data filtered by geography and sector */
+  const durationByScope = useMemo(() =>
+    stallDuration.filter(d =>
       (geography === 'All' || d.msa_category === geography) && d.naics2_title === sector
     ),
-  [stalledData, geography, sector]);
+  [geography, sector]);
 
-  /** Aggregate stats: total, low-wage, underemployed, stalled worker counts */
+  /** Aggregate stats: total employment, low-wage, underemployed, stalled worker counts */
   const stats = useMemo(() => {
-    let lw = 0, ue = 0, total = 0;
+    let total = 0, lw = 0, ue = 0, st = 0;
     filteredByScope.forEach(d => {
-      total += d.n_weighted;
-      lw += d.n_low_wage_weighted;
-      ue += d.n_underemployed_weighted;
+      total += d.oews_calibrated_employment;
+      lw += d.estimated_low_wage;
+      ue += d.estimated_underemployed;
+      st += d.estimated_stalled;
     });
-    const st = stalledByScope.reduce((sum, d) => sum + d.n_career_stalled_weighted, 0);
-    return { total, lw, ue, st };
-  }, [filteredByScope, stalledByScope]);
+    return { total: Math.round(total), lw: Math.round(lw), ue: Math.round(ue), st: Math.round(st) };
+  }, [filteredByScope]);
 
-  /** Breakdowns by education, age, and occupation for the selected cohort */
+  /** Occupational breakdowns for the selected cohort */
   const cohortBreakdowns = useMemo(() => {
-    const edu: Record<string, number> = {};
-    const age: Record<string, number> = {};
     const occ: Record<string, number> = {};
 
     filteredByScope.forEach(d => {
       let weight = 0;
-      if (selectedCohort === 'Low Wage') weight = d.n_low_wage_weighted;
-      else if (selectedCohort === 'Underemployed') weight = d.n_underemployed_weighted;
-      else if (selectedCohort === 'Stalled') weight = d.n_stranded_weighted;
-      else weight = d.n_low_wage_weighted + d.n_underemployed_weighted + d.n_stranded_weighted;
-
-      edu[d.education_level_label] = (edu[d.education_level_label] || 0) + weight;
-      age[d.age_group] = (age[d.age_group] || 0) + weight;
+      if (selectedCohort === 'Low Wage') weight = d.estimated_low_wage;
+      else if (selectedCohort === 'Underemployed') weight = d.estimated_underemployed;
+      else if (selectedCohort === 'Stalled') weight = d.estimated_stalled;
+      else weight = d.estimated_low_wage + d.estimated_underemployed + d.estimated_stalled;
       occ[d.SOC_2019_5_ACS_NAME] = (occ[d.SOC_2019_5_ACS_NAME] || 0) + weight;
     });
 
     return {
-      edu: Object.entries(edu).sort((a, b) => EDUCATION_ORDER.indexOf(a[0]) - EDUCATION_ORDER.indexOf(b[0])) as [string, number][],
-      age: Object.entries(age).sort((a, b) => AGE_GROUPS.indexOf(a[0]) - AGE_GROUPS.indexOf(b[0])) as [string, number][],
       occ: Object.entries(occ).sort((a, b) => b[1] - a[1]).filter(([, val]) => val > 0) as [string, number][]
     };
   }, [filteredByScope, selectedCohort]);
@@ -525,19 +475,22 @@ const App = () => {
   /** Stalled workers breakdowns: occupational mix + stall duration distribution */
   const stalledBreakdowns = useMemo(() => {
     const occMix: Record<string, number> = {};
-    const durations: Record<string, number> = Object.fromEntries(TENURE_BUCKETS.map(([l]) => [l, 0]));
+    filteredByScope.forEach(d => {
+      occMix[d.SOC_2019_5_ACS_NAME] = (occMix[d.SOC_2019_5_ACS_NAME] || 0) + d.estimated_stalled;
+    });
 
-    stalledByScope.forEach(d => {
-      occMix[d.soc_2019_5_acs_name] = (occMix[d.soc_2019_5_acs_name] || 0) + d.n_career_stalled_weighted;
-      const bucket = TENURE_BUCKETS.find(([, lo, hi]) => d.tenure_years >= lo && d.tenure_years < hi);
-      if (bucket) durations[bucket[0]] += d.n_career_stalled_weighted;
+    // Duration histogram from pre-binned data
+    const durations: [string, number][] = TENURE_LABELS.map((label, i) => {
+      const key = TENURE_KEYS[i];
+      const total = durationByScope.reduce((sum, d) => sum + (Number(d[key]) || 0), 0);
+      return [label, total];
     });
 
     return {
-      occMix: Object.entries(occMix).sort((a, b) => b[1] - a[1]) as [string, number][],
-      durations: TENURE_BUCKETS.map(([label]) => [label, durations[label]]) as [string, number][],
+      occMix: Object.entries(occMix).sort((a, b) => b[1] - a[1]).filter(([, val]) => val > 0) as [string, number][],
+      durations,
     };
-  }, [stalledByScope]);
+  }, [filteredByScope, durationByScope]);
 
   // Auto-select top occupation when filters change
   useEffect(() => {
@@ -669,8 +622,6 @@ const App = () => {
         </div>
       </div>`;
 
-    const maxAge = Math.max(...cohortBreakdowns.age.map(x => x[1]));
-    const maxEdu = Math.max(...cohortBreakdowns.edu.map(x => x[1]));
     const maxOcc = Math.max(...cohortBreakdowns.occ.map(x => x[1]));
 
     const reportHtml = `<html><head><title>Executive Brief: Stranded Talent Strategy</title>
@@ -705,17 +656,11 @@ const App = () => {
           <div class="stat-box"><span class="stat-label">Underemployed</span><span class="stat-val">${stats.ue.toLocaleString()}</span></div>
           <div class="stat-box"><span class="stat-label">Stalled</span><span class="stat-val">${Math.round(stats.st).toLocaleString()}</span></div>
         </div>
-        <div class="content-grid"><div>
-          <h2>Demographic Profile: ${selectedCohort}</h2>
-          <div style="margin-bottom: 32px;"><h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Age Distribution</h3>
-            ${cohortBreakdowns.age.map(([l, v]) => renderReportBar(l, v, maxAge)).join('')}</div>
-          <div><h3 style="font-size: 11px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 14px; font-weight: 800; margin-top: 0;">Education Pipeline</h3>
-            ${cohortBreakdowns.edu.map(([l, v]) => renderReportBar(l, v, maxEdu, '#f59e0b')).join('')}</div>
-        </div><div>
-          <h2>Occupational Distribution</h2>
+        <div>
+          <h2>Occupational Distribution: ${selectedCohort}</h2>
           <p style="font-size: 11px; color: #64748b; margin: 0 0 18px 0; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
-          ${cohortBreakdowns.occ.slice(0, 10).map(([l, v]) => renderReportBar(l, v, maxOcc, '#10b981')).join('')}
-        </div></div>
+          ${cohortBreakdowns.occ.slice(0, 12).map(([l, v]) => renderReportBar(l, v, maxOcc, '#10b981')).join('')}
+        </div>
         <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
       </div>
       <div class="page">
@@ -742,17 +687,6 @@ const App = () => {
   // ============================================================================
   // RENDER
   // ============================================================================
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-blue-900 border-t-transparent"></div>
-          <p className="mt-4 text-slate-600 font-bold">Loading dashboard data...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Treemap layout computation for Section 02
   const treemapTotal = stats.lw + stats.ue + stats.st;
@@ -915,7 +849,7 @@ const App = () => {
                             <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{item.label}</span>
                           </div>
                           <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-black text-slate-800 tabular-nums">{item.value.toLocaleString()}</span>
+                            <span className="text-2xl font-black text-slate-800 tabular-nums">{Math.round(item.value).toLocaleString()}</span>
                             <span className="text-xs font-bold text-slate-400">{item.pct.toFixed(0)}%</span>
                           </div>
                         </div>
@@ -952,59 +886,33 @@ const App = () => {
             {/* Diagnostics panel */}
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
-              {selectedCohort === 'Stalled' ? (
-                <>
-                  <div className="space-y-6">
-                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Briefcase size={14} className="text-emerald-500"/> Occupational Mix</p>
-                    <div className="space-y-5">
-                      {stalledBreakdowns.occMix.length > 0
-                        ? stalledBreakdowns.occMix.slice(0, 6).map(([label, val]) => (
-                            <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(stalledBreakdowns.occMix[0][1])} colorClass="bg-emerald-500" />
-                          ))
-                        : <p className="text-xs text-slate-400 italic">No stalled workers in this selection.</p>}
-                    </div>
+              <div className="space-y-6">
+                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <Briefcase size={14} className={selectedCohort === 'Stalled' ? 'text-emerald-500' : 'text-blue-500'} />
+                  {selectedCohort === 'Stalled' ? 'Stalled Occupational Mix' : 'Occupational Distribution'}
+                </p>
+                <div className="space-y-5">
+                  {(selectedCohort === 'Stalled' ? stalledBreakdowns.occMix : cohortBreakdowns.occ).length > 0
+                    ? (selectedCohort === 'Stalled' ? stalledBreakdowns.occMix : cohortBreakdowns.occ).slice(0, 8).map(([label, val]) => (
+                        <ProgressBar key={label} label={label} value={Math.round(val)}
+                          max={Math.round((selectedCohort === 'Stalled' ? stalledBreakdowns.occMix : cohortBreakdowns.occ)[0][1])}
+                          colorClass={selectedCohort === 'Stalled' ? 'bg-emerald-500' : selectedCohort === 'Low Wage' ? 'bg-blue-500' : selectedCohort === 'Underemployed' ? 'bg-amber-500' : 'bg-blue-600'} />
+                      ))
+                    : <p className="text-xs text-slate-400 italic">No workers in this selection.</p>}
+                </div>
+              </div>
+              {selectedCohort === 'Stalled' && (
+                <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14} className="text-emerald-700"/> Stall Duration</p>
+                  <div className="space-y-5">
+                    {(() => {
+                      const maxDur = Math.max(...stalledBreakdowns.durations.map(([, v]) => v as number), 1);
+                      return stalledBreakdowns.durations.map(([label, val]) => (
+                        <ProgressBar key={label} label={label} value={Math.round(val as number)} max={Math.round(maxDur)} colorClass="bg-emerald-700" />
+                      ));
+                    })()}
                   </div>
-                  <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
-                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14} className="text-emerald-700"/> Stall Duration</p>
-                    <div className="space-y-5">
-                      {(() => {
-                        const maxDur = Math.max(...stalledBreakdowns.durations.map(([, v]) => v as number), 1);
-                        return stalledBreakdowns.durations.map(([label, val]) => (
-                          <ProgressBar key={label} label={label} value={Math.round(val as number)} max={Math.round(maxDur)} colorClass="bg-emerald-700" />
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
-                    <div className="space-y-6">
-                      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Users size={14} className="text-blue-500"/> Age Profile</p>
-                      <div className="space-y-5">
-                        {cohortBreakdowns.age.map(([label, val]) => (
-                          <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.age.map(x => x[1]))} colorClass="bg-blue-600" />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-6">
-                      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><GraduationCap size={14} className="text-amber-500"/> Edu Level</p>
-                      <div className="space-y-5">
-                        {cohortBreakdowns.edu.map(([label, val]) => (
-                          <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.edu.map(x => x[1]))} colorClass="bg-amber-500" />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-8 md:mt-12 pt-8 md:pt-10 border-t border-slate-100">
-                    <p className="text-[10px] md:text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2"><BarChart3 size={14} className="text-emerald-500"/> <span className="hidden sm:inline">Occupations with Most Stranded Workers</span><span className="sm:hidden">Top Occupations</span></p>
-                    <div className="space-y-4">
-                      {cohortBreakdowns.occ.slice(0, 4).map(([label, val]) => (
-                        <ProgressBar key={label} label={label} value={val} max={Math.max(...cohortBreakdowns.occ.map(x => x[1]))} colorClass="bg-emerald-500" />
-                      ))}
-                    </div>
-                  </div>
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -1033,7 +941,7 @@ const App = () => {
                     <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
                       {selectedCohort === 'All Stranded' ? 'Stranded Workers' : `${selectedCohort} Workers`}
                     </span>
-                    <span className={`text-base md:text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{val.toLocaleString()}</span>
+                    <span className={`text-base md:text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{Math.round(val).toLocaleString()}</span>
                   </div>
                 </div>
               ))}
@@ -1470,7 +1378,7 @@ const App = () => {
                         </div>
                         <div>
                           <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Workers in Pool</p>
-                          <p className="text-2xl md:text-3xl font-black">{(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
+                          <p className="text-2xl md:text-3xl font-black">{Math.round(cohortBreakdowns.occ.find(d => d[0] === targetOccupation)?.[1] || 0).toLocaleString()}</p>
                         </div>
                       </div>
                     </div>
