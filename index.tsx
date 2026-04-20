@@ -11,7 +11,7 @@
  *   - occ_similarity.json: O*NET skill-similarity between occupation pairs
  *   - national_transitions.json: Observed occupational transitions (national + TN)
  *   - skill_gaps_top5.json: Skill gaps for top-5 destination occupations
- *   - skill_gaps_top20.json: Skill gaps for top-20 destinations (cross-pathway analysis)
+ *   - cross_pathway_skills.json: Pre-computed skill subcategory gaps aggregated across destination occupations
  *   - posting_demand.json: TN job posting demand by occupation and sector
  *   - tn_licenses.json: Statutory occupational licensing (Knee Center data)
  *   - common_credentials.json: Common industry-expected certifications
@@ -36,7 +36,7 @@ import stallDurationRaw from './src/data/stall_duration.json';
 import occSimilarityRaw from './src/data/occ_similarity.json';
 import nationalTransitionsRaw from './src/data/national_transitions.json';
 import skillGapsTop5Raw from './src/data/skill_gaps_top5.json';
-import skillGapsTop20Raw from './src/data/skill_gaps_top20.json';
+import crossPathwaySkillsRaw from './src/data/cross_pathway_skills.json';
 import postingDemandRaw from './src/data/posting_demand.json';
 import tnLicensesRaw from './src/data/tn_licenses.json';
 import commonCredsRaw from './src/data/common_credentials.json';
@@ -105,13 +105,22 @@ interface PathwayRow {
   origin_share_at_year_5?: number | null;
 }
 
-/** A row from skill_gaps_top5.json or skill_gaps_top20.json */
+/** A row from skill_gaps_top5.json */
 interface SkillGapRow {
   origin_occupation: string;
   destination_occupation: string;
   SKILL_NAME: string;
   skill_gap: number;
   destination_importance: number;
+}
+
+/** A row from cross_pathway_skills.json */
+interface CrossPathwaySkillRow {
+  origin_occupation: string;
+  SKILL_SUBCATEGORY_NAME: string;
+  n_destination_occs: number;
+  avg_skill_gap: number;
+  total_destination_occs: number;
 }
 
 /** A row from posting_demand.json (occ-level demand) */
@@ -159,7 +168,7 @@ const stallDuration = stallDurationRaw as StallDurationRow[];
 const occSimilarity = occSimilarityRaw as PathwayRow[];
 const nationalTransitions = nationalTransitionsRaw as PathwayRow[];
 const skillGapsTop5 = skillGapsTop5Raw as SkillGapRow[];
-const skillGapsTop20 = skillGapsTop20Raw as SkillGapRow[];
+const crossPathwaySkillsData = crossPathwaySkillsRaw as CrossPathwaySkillRow[];
 const postingDemand = postingDemandRaw as {
   occ: OccDemandRow[];
   occ_sector: OccSectorDemandRow[];
@@ -571,32 +580,19 @@ const App = () => {
       .sort((a, b) => b.destination_importance - a.destination_importance);
   }, [targetOccupation, selectedDestination]);
 
-  // --- Cross-pathway skill acquisition (uses broader top-20 dataset) ---
+  // --- Cross-pathway skill acquisition (pre-computed subcategory aggregations) ---
   const crossPathwaySkills = useMemo(() => {
     if (!targetOccupation) return [];
-    const allTransDests = nationalTransitions.filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation).map(r => r.SOC_2019_5_ACS_NAME_TARGET);
-    const allSimDests = occSimilarity.filter(r => r.SOC_2019_5_ACS_NAME_SOURCE === targetOccupation).map(r => r.SOC_2019_5_ACS_NAME_TARGET);
-    const allDests = Array.from(new Set([...allTransDests, ...allSimDests]));
-    const totalDestCount = allDests.length;
-
-    const allSkillGaps = skillGapsTop20.filter(
-      r => r.origin_occupation === targetOccupation && r.skill_gap > 0.005 && r.destination_importance > 0.005 && allDests.includes(r.destination_occupation)
-    );
-
-    // Track unique destination occupations per skill (prevents double-counting if same
-    // skill appears multiple times for the same origin→destination pair in the data)
-    const skillMap: Record<string, { dests: Set<string>; maxImportance: number }> = {};
-    allSkillGaps.forEach(s => {
-      if (!skillMap[s.SKILL_NAME]) skillMap[s.SKILL_NAME] = { dests: new Set(), maxImportance: 0 };
-      skillMap[s.SKILL_NAME].dests.add(s.destination_occupation);
-      skillMap[s.SKILL_NAME].maxImportance = Math.max(skillMap[s.SKILL_NAME].maxImportance, s.destination_importance);
-    });
-
-    return Object.entries(skillMap)
-      .filter(([, data]) => data.dests.size >= 2)
-      .sort((a, b) => b[1].dests.size - a[1].dests.size || b[1].maxImportance - a[1].maxImportance)
+    return crossPathwaySkillsData
+      .filter(r => r.origin_occupation === targetOccupation)
+      .sort((a, b) => b.n_destination_occs - a.n_destination_occs || b.avg_skill_gap - a.avg_skill_gap)
       .slice(0, 5)
-      .map(([skill, data]) => ({ skill, count: data.dests.size, totalDests: totalDestCount, importance: data.maxImportance }));
+      .map(r => ({
+        skill: r.SKILL_SUBCATEGORY_NAME,
+        count: r.n_destination_occs,
+        totalDests: r.total_destination_occs,
+        importance: r.avg_skill_gap,
+      }));
   }, [targetOccupation]);
 
   // --- Selected destination row (for sidebar metrics) ---
