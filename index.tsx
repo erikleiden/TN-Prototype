@@ -458,7 +458,7 @@ const App = () => {
       total += d.oews_calibrated_employment;
       lw += d.estimated_low_wage;
       ue += d.estimated_underemployed;
-      st += d.estimated_stalled;
+      st += d.estimated_stalled_only;
     });
     return { total: Math.round(total), lw: Math.round(lw), ue: Math.round(ue), st: Math.round(st) };
   }, [filteredByScope]);
@@ -471,8 +471,8 @@ const App = () => {
       let weight = 0;
       if (selectedCohort === 'Low Wage') weight = d.estimated_low_wage;
       else if (selectedCohort === 'Underemployed') weight = d.estimated_underemployed;
-      else if (selectedCohort === 'Stalled') weight = d.estimated_stalled;
-      else weight = d.estimated_low_wage + d.estimated_underemployed + d.estimated_stalled;
+      else if (selectedCohort === 'Stalled') weight = d.estimated_stalled_only;
+      else weight = d.estimated_low_wage + d.estimated_underemployed + d.estimated_stalled_only;
       occ[d.SOC_2019_5_ACS_NAME] = (occ[d.SOC_2019_5_ACS_NAME] || 0) + weight;
     });
 
@@ -485,7 +485,7 @@ const App = () => {
   const stalledBreakdowns = useMemo(() => {
     const occMix: Record<string, number> = {};
     filteredByScope.forEach(d => {
-      occMix[d.SOC_2019_5_ACS_NAME] = (occMix[d.SOC_2019_5_ACS_NAME] || 0) + d.estimated_stalled;
+      occMix[d.SOC_2019_5_ACS_NAME] = (occMix[d.SOC_2019_5_ACS_NAME] || 0) + d.estimated_stalled_only;
     });
 
     // Duration histogram from pre-binned data
