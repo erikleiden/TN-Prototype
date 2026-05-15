@@ -439,36 +439,68 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
   );
 };
 
-/** AI exposure helpers. Thresholds align with BGI report quartile framing
- *  (top-quartile high-exposure occupations cluster around 0.60+ automation). */
-const autoBand = (score?: number) => {
-  if (score === undefined || score === null || isNaN(score)) return { label: 'No data', color: 'bg-slate-100 text-slate-400', solid: 'bg-slate-500', dark: 'bg-white/10 text-blue-300', dot: '#94a3b8' };
-  if (score >= 0.60) return { label: 'High Auto Risk', color: 'bg-red-600 text-white', solid: 'bg-red-600', dark: 'bg-red-500 text-white', dot: '#dc2626' };
-  if (score >= 0.50) return { label: 'Med Auto Risk', color: 'bg-amber-500 text-white', solid: 'bg-amber-500', dark: 'bg-amber-500 text-white', dot: '#d97706' };
-  return { label: 'Low Auto Risk', color: 'bg-emerald-600 text-white', solid: 'bg-emerald-600', dark: 'bg-emerald-500 text-white', dot: '#059669' };
-};
-const augBand = (score?: number) => {
-  if (score === undefined || score === null || isNaN(score)) return { label: '—', color: 'bg-slate-100 text-slate-400', solid: 'bg-slate-500', dark: 'bg-white/10 text-blue-300' };
-  if (score >= 0.55) return { label: 'High Aug', color: 'bg-blue-600 text-white', solid: 'bg-blue-600', dark: 'bg-blue-500 text-white' };
-  if (score >= 0.40) return { label: 'Med Aug', color: 'bg-blue-400 text-white', solid: 'bg-blue-400', dark: 'bg-blue-400/80 text-white' };
-  return { label: 'Low Aug', color: 'bg-slate-200 text-slate-600', solid: 'bg-slate-400', dark: 'bg-white/10 text-blue-300' };
+/** AI displacement-risk model.
+ *
+ *  Rather than banding on raw automation exposure (which over-flags roles that
+ *  AI augments rather than replaces — e.g. Registered Nurses), we band on the
+ *  NET displacement score: automation − augmentation. The thresholds match the
+ *  actual top-quartile / median split of the net distribution across the 208
+ *  occupations in the data (P50 = +0.04, P75 = +0.10), and recover the report's
+ *  qualitative classifications:
+ *    Cashiers / CSR / Laborers (net ≈ +0.14 to +0.20) → High
+ *    Software Developers       (net = +0.05)         → Med  (report: "very close to top quartile")
+ *    Personal Financial Advisors (net = -0.12)       → Low  (report: "most AI-resilient non-clinical")
+ *    Registered Nurses          (net = -0.15)        → Low  (report flagship resilient role)
+ */
+type AIBand = 'high' | 'med' | 'low' | 'none';
+interface AIScore {
+  auto: number | null;
+  aug: number | null;
+  net: number | null;
+  band: AIBand;
+  bandLabel: string;
+  // Tailwind classes
+  bgSolid: string;   // for big tiles
+  bgPill: string;    // for pill on light bg
+  bgPillDark: string;// for pill on dark bg (selected card / sidebar)
+}
+const scoreAI = (auto?: number | null, aug?: number | null): AIScore => {
+  const a = (auto === undefined || auto === null || isNaN(auto) || auto <= 0.001) ? null : auto;
+  const g = (aug  === undefined || aug  === null || isNaN(aug)) ? null : aug;
+  if (a === null) {
+    return { auto: null, aug: g, net: null, band: 'none', bandLabel: 'No data',
+      bgSolid: 'bg-slate-200 text-slate-500', bgPill: 'bg-slate-100 text-slate-400', bgPillDark: 'bg-white/10 text-blue-300' };
+  }
+  const net = a - (g ?? 0);
+  let band: AIBand;
+  if (net >= 0.10) band = 'high';
+  else if (net >= 0.00) band = 'med';
+  else band = 'low';
+  const palette = {
+    high: { label: 'High Displacement Risk', bgSolid: 'bg-red-600 text-white border-red-700',     bgPill: 'bg-red-600 text-white',     bgPillDark: 'bg-red-500 text-white' },
+    med:  { label: 'Med Displacement Risk',  bgSolid: 'bg-amber-500 text-white border-amber-600', bgPill: 'bg-amber-500 text-white',   bgPillDark: 'bg-amber-500 text-white' },
+    low:  { label: 'Low Displacement Risk',  bgSolid: 'bg-emerald-600 text-white border-emerald-700', bgPill: 'bg-emerald-600 text-white', bgPillDark: 'bg-emerald-500 text-white' },
+  }[band];
+  return { auto: a, aug: g, net, band, bandLabel: palette.label,
+    bgSolid: palette.bgSolid, bgPill: palette.bgPill, bgPillDark: palette.bgPillDark };
 };
 
-/** Single AI risk pill for destination/pathway cards. Color-coded band based on
- *  automation exposure (the primary durability signal for destranding pathways).
- *  Augmentation surfaces on hover for users who want the second dimension. */
+/** Single AI displacement-risk pill for destination/pathway cards.
+ *  Label = band ("High / Med / Low"), number = automation % (most intuitive at a glance).
+ *  Tooltip surfaces auto / aug / net so power users can sanity-check. */
 const AIBadge: React.FC<{ auto?: number | null; aug?: number | null; isSelected?: boolean }> = ({ auto, aug, isSelected }) => {
-  const hasData = auto !== undefined && auto !== null;
-  if (!hasData) {
-    return <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-400'}`}>No data</span>;
+  const s = scoreAI(auto, aug);
+  if (s.band === 'none') {
+    return <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? s.bgPillDark : s.bgPill}`}>No data</span>;
   }
-  const band = autoBand(auto);
-  const pct = Math.round((auto as number) * 100);
-  const shortLabel = pct >= 60 ? 'High Risk' : pct >= 50 ? 'Med Risk' : 'Low Risk';
+  const shortLabel = s.band === 'high' ? 'High' : s.band === 'med' ? 'Med' : 'Low';
+  const autoPct = Math.round((s.auto as number) * 100);
+  const augPct  = s.aug !== null ? Math.round((s.aug as number) * 100) : null;
+  const netPct  = Math.round((s.net as number) * 100);
   return (
-    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${isSelected ? band.dark : band.color}`}
-      title={`Automation exposure ${pct}% (${band.label})${aug !== undefined && aug !== null ? ` · Augmentation ${Math.round((aug as number) * 100)}%` : ''}`}>
-      {shortLabel} · {pct}
+    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${isSelected ? s.bgPillDark : s.bgPill}`}
+      title={`${s.bandLabel} · Automation ${autoPct}%${augPct !== null ? ` · Augmentation ${augPct}%` : ''} · Net ${netPct >= 0 ? '+' : ''}${netPct}pp`}>
+      {shortLabel} · {autoPct}
     </span>
   );
 };
@@ -768,23 +800,21 @@ const App = () => {
     const maxAge = Math.max(...ageBuckets.map(([, v]) => v), 1);
     const maxEdu = Math.max(...eduBuckets.map(([, v]) => v), 1);
 
-    // AI exposure narrative for top occupations in this slice
+    // Displacement risk for top occupations in this slice
     const topOccs = cohortBreakdowns.occ.slice(0, 6);
     const topOccsWithAI = topOccs.map(([occ, val]) => {
       const row = nationalTransitions.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === occ)
         || occSimilarity.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === occ);
-      return {
-        occ,
-        workers: Math.round(val),
-        auto: row?.auto_exposure_SOURCE ?? null,
-        aug: row?.aug_exposure_SOURCE ?? null,
-      };
+      const s = scoreAI(row?.auto_exposure_SOURCE, row?.aug_exposure_SOURCE);
+      return { occ, workers: Math.round(val), score: s };
     });
-    const highExposureOccs = topOccsWithAI.filter(o => o.auto !== null && (o.auto as number) >= 0.60);
-    const highExposureWorkers = highExposureOccs.reduce((s, o) => s + o.workers, 0);
-    const highExposureShare = totalStranded > 0 ? Math.round((highExposureWorkers / totalStranded) * 100) : 0;
+    const highRiskOccs = topOccsWithAI.filter(o => o.score.band === 'high');
+    const highRiskWorkers = highRiskOccs.reduce((s, o) => s + o.workers, 0);
+    const highRiskShare = totalStranded > 0 ? Math.round((highRiskWorkers / totalStranded) * 100) : 0;
 
-    const autoColor = (s: number | null) => s === null ? '#94a3b8' : s >= 0.60 ? '#dc2626' : s >= 0.50 ? '#d97706' : '#059669';
+    // Pure CSS hex for the brief (Tailwind classes don't reach here)
+    const bandHex = (b: AIBand) => b === 'high' ? '#dc2626' : b === 'med' ? '#d97706' : b === 'low' ? '#059669' : '#94a3b8';
+    const bandShort = (b: AIBand) => b === 'high' ? 'High' : b === 'med' ? 'Med' : b === 'low' ? 'Low' : '—';
 
     // Top destination pathway (if any). Use the auto-selected target occupation.
     const topPathways = destinationPathways.slice(0, 5);
@@ -833,12 +863,12 @@ const App = () => {
           <div class="stat-box"><span class="stat-label">Total Workforce</span><span class="stat-val">${stats.total.toLocaleString()}</span></div>
           <div class="stat-box"><span class="stat-label">Stranded</span><span class="stat-val">${totalStranded.toLocaleString()}</span></div>
           <div class="stat-box"><span class="stat-label">Stranded Rate</span><span class="stat-val">${strandedPct.toFixed(0)}%</span></div>
-          <div class="stat-box"><span class="stat-label">Top-quartile AI exposed</span><span class="stat-val">${highExposureShare}%</span></div>
+          <div class="stat-box"><span class="stat-label">In High-Risk AI Roles</span><span class="stat-val">${highRiskShare}%</span></div>
         </div>
 
         <h2>What this slice looks like</h2>
         <p class="narrative">
-          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled. Of those, roughly <strong>${highExposureShare}% sit in occupations BGI scores in the top quartile for AI automation exposure</strong> — the report's "double-jeopardy" population, currently stranded and in roles where the risk of further disruption is elevated.
+          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled. Of those, roughly <strong>${highRiskShare}% sit in occupations in the high net displacement-risk band</strong> (BGI automation exposure exceeds augmentation potential by ≥10pp) — the report's "double-jeopardy" population, currently stranded and in roles where AI is on net more likely to replace than enhance the worker.
         </p>
 
         ${geoContext ? `<p class="narrative"><strong style="color: #1e3a8a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em;">${esc(geography === 'All' ? 'Statewide context' : geography + ' context')}</strong><span class="quote">${esc(geoContext)}</span></p>` : ''}
@@ -871,24 +901,27 @@ const App = () => {
           </div>
         </div>
 
-        ${topOccsWithAI.some(o => o.auto !== null) ? `
-        <h2 style="margin-top: 26px;">AI exposure across the top stranded occupations</h2>
+        ${topOccsWithAI.some(o => o.score.band !== 'none') ? `
+        <h2 style="margin-top: 26px;">Displacement risk across the top stranded occupations</h2>
         <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
           <thead><tr style="text-align: left; color: #64748b; text-transform: uppercase; font-size: 9px; letter-spacing: 0.1em; font-weight: 800;">
             <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0;">Occupation</th>
             <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">${esc(selectedCohort)} workers</th>
             <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">Automation</th>
             <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">Augmentation</th>
+            <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">Risk Band</th>
           </tr></thead>
           <tbody>
           ${topOccsWithAI.map(o => `<tr>
             <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; font-weight: 600;">${esc(o.occ)}</td>
             <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #475569;">${o.workers.toLocaleString()}</td>
-            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: ${autoColor(o.auto)};">${o.auto !== null ? `${Math.round(o.auto * 100)}%` : '—'}</td>
-            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #475569;">${o.aug !== null ? `${Math.round(o.aug * 100)}%` : '—'}</td>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #475569;">${o.score.auto !== null ? `${Math.round(o.score.auto * 100)}%` : '—'}</td>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #475569;">${o.score.aug !== null ? `${Math.round(o.score.aug * 100)}%` : '—'}</td>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800;"><span style="background: ${bandHex(o.score.band)}; color: white; padding: 2px 8px; border-radius: 999px; font-size: 10px;">${bandShort(o.score.band)}</span></td>
           </tr>`).join('')}
           </tbody>
         </table>
+        <p style="font-size: 10px; color: #94a3b8; margin-top: 8px; font-style: italic;">Risk Band = net displacement risk (automation − augmentation). High = net ≥ +10pp · Med = net 0 to +10pp · Low = AI augments more than it automates.</p>
         ` : ''}
 
         <div class="footer">Tennessee BGI Strategic Workforce Initiative · ${esc(geoLabel)} · ${esc(sector)} · Page 2 / 3</div>
@@ -906,8 +939,7 @@ const App = () => {
         </p>` : '<p class="narrative">No focus occupation selected. Choose an occupation in the dashboard to generate a tailored pathway page.</p>'}
 
         ${topPathways.map((p, i) => {
-          const autoScore = p.auto_exposure_TARGET;
-          const augScore = p.aug_exposure_TARGET;
+          const sDest = scoreAI(p.auto_exposure_TARGET, p.aug_exposure_TARGET);
           const intP = p.internal_promotion_rate_5_TARGET;
           return `<div class="rec-card">
             <h3>Destination ${String(i + 1).padStart(2, '0')}${p.similarity_rating ? ` · ${esc(p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1))} similarity` : ''}</h3>
@@ -916,8 +948,7 @@ const App = () => {
               <span><strong style="color: #fef3c7;">Wage gain:</strong> +$${Math.round(p.potential_wage_gain).toLocaleString()} (${Math.round(p.potential_wage_gain_pct * 100)}%)</span>
               <span><strong style="color: #fef3c7;">Strandedness change:</strong> ${Math.round(p.diff_strandedness * 100)}%</span>
               <span><strong style="color: #fef3c7;">TN demand:</strong> ${esc(p.demand_category_TARGET || 'N/A')}</span>
-              ${(autoScore !== undefined && autoScore !== null) ? `<span class="rec-pill" style="background: ${autoScore >= 0.60 ? 'rgba(220, 38, 38, 0.25)' : autoScore >= 0.50 ? 'rgba(245, 158, 11, 0.22)' : 'rgba(16, 185, 129, 0.22)'};">AI auto ${Math.round(autoScore * 100)}%</span>` : ''}
-              ${(augScore !== undefined && augScore !== null) ? `<span class="rec-pill">Aug ${Math.round(augScore * 100)}%</span>` : ''}
+              ${sDest.band !== 'none' ? `<span class="rec-pill" style="background: ${bandHex(sDest.band)}; color: white;">${bandShort(sDest.band)} displacement risk</span>` : ''}
               ${(intP !== undefined && intP !== null) ? `<span class="rec-pill">Internal promo ${Math.round(intP * 100)}%</span>` : ''}
             </div>
           </div>`;
@@ -926,7 +957,7 @@ const App = () => {
         <h2 style="margin-top: 22px;">Strategic implications</h2>
         <ul class="recs-list">
           ${strandedPct >= 25 ? `<li><strong>Sector triage.</strong> ${esc(sector)} in ${esc(geoLabel)} runs above the statewide ~25% strandedness baseline. Prioritise this intersection for credential-pathway investment.</li>` : `<li><strong>Below-baseline slice.</strong> ${esc(sector)} in ${esc(geoLabel)} sits at ${strandedPct.toFixed(0)}% strandedness, below the statewide baseline — interventions should focus on the specific stranded subpopulations identified on page 2 rather than blanket sector treatments.</li>`}
-          ${highExposureShare >= 40 ? `<li><strong>Double-jeopardy concentration.</strong> ${highExposureShare}% of stranded workers in this slice sit in top-quartile AI-exposure occupations — exceeding the statewide ~39% average. Pathway choices that route into low-exposure destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable AI exposure.</strong> ${highExposureShare}% of stranded workers in this slice sit in top-quartile AI-exposure occupations, below the statewide ~39% average — strandedness here is more a pay/utilisation question than a disruption question.</li>`}
+          ${highRiskShare >= 30 ? `<li><strong>Double-jeopardy concentration.</strong> ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — meaning automation outweighs augmentation by 10+ percentage points. Pathway choices that route into low-risk destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable displacement risk.</strong> Only ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — most face AI as a tool that augments rather than replaces. Strandedness here is more a pay/utilisation question than an AI-disruption question.</li>`}
           <li><strong>Pathway architecture.</strong> The report identifies seven destranding pathway types. For this slice, the most relevant typically include the Healthcare Ladder (highest wage gain, lowest AI exposure), Professional & Financial Services (highest strandedness reduction), and Project & Operations Management (most credential-accessible, sector-agnostic).</li>
           <li><strong>Within-occupation lever.</strong> Promotion-rate and full-time-share data on page 2 indicate that, for some occupations, scaling part-time hours up to full-time and supporting internal promotion are credible alternatives to a full pathway switch. These are lower-cost interventions.</li>
         </ul>
@@ -1293,37 +1324,33 @@ const App = () => {
                       ) : null;
                     })()}
                   </div>
-                  {/* AI exposure tile — solid colored background reflects the band */}
+                  {/* AI displacement risk tile — solid background reflects the band */}
                   {(() => {
-                    const auto = occupationDiagnostics.autoExposure;
-                    const band = autoBand(auto);
-                    const hasData = auto !== undefined && auto !== null;
-                    const bgClass = hasData
-                      ? auto >= 0.60 ? 'bg-red-600 text-white border-red-700'
-                        : auto >= 0.50 ? 'bg-amber-500 text-white border-amber-600'
-                        : 'bg-emerald-600 text-white border-emerald-700'
-                      : 'bg-slate-100 text-slate-500 border-slate-200';
-                    const subLabelClass = hasData ? 'text-white/70' : 'text-slate-400';
+                    const s = scoreAI(occupationDiagnostics.autoExposure, occupationDiagnostics.augExposure);
+                    const hasData = s.band !== 'none';
+                    const subLabelClass = hasData ? 'text-white/75' : 'text-slate-400';
                     const valClass = hasData ? 'text-white' : 'text-slate-700';
+                    const autoPct = s.auto !== null ? Math.round(s.auto * 100) : null;
+                    const augPct  = s.aug  !== null ? Math.round(s.aug  * 100) : null;
                     return (
-                      <div className={`p-4 md:p-6 rounded-[20px] md:rounded-[24px] border-2 group relative shadow-sm ${bgClass}`}>
+                      <div className={`p-4 md:p-6 rounded-[20px] md:rounded-[24px] border-2 group relative shadow-sm ${s.bgSolid}`}>
                         <p className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-1 ${subLabelClass}`}>
-                          <Activity size={11} /> AI Exposure
+                          <Activity size={11} /> Displacement Risk
                         </p>
                         {hasData ? (
                           <>
-                            <p className={`text-2xl md:text-3xl font-black ${valClass}`}>{(auto * 100).toFixed(0)}%</p>
-                            <p className={`text-[10px] font-black uppercase tracking-wider mt-1 ${subLabelClass}`}>{band.label}</p>
+                            <p className={`text-2xl md:text-3xl font-black ${valClass}`}>{autoPct}%</p>
+                            <p className={`text-[10px] font-black uppercase tracking-wider mt-1 ${subLabelClass}`}>{s.bandLabel}</p>
                             <p className={`text-[9px] mt-2 ${subLabelClass}`}>
-                              Aug {occupationDiagnostics.augExposure !== undefined && occupationDiagnostics.augExposure !== null ? `${(occupationDiagnostics.augExposure * 100).toFixed(0)}%` : '—'}
-                              {occupationDiagnostics.impactPct !== undefined && occupationDiagnostics.impactPct !== null ? ` · 5yr Δ ${occupationDiagnostics.impactPct >= 0 ? '+' : ''}${occupationDiagnostics.impactPct.toFixed(1)}%` : ''}
+                              Auto {autoPct}% · Aug {augPct !== null ? `${augPct}%` : '—'}
+                              {occupationDiagnostics.impactPct !== undefined && occupationDiagnostics.impactPct !== null ? ` · 5yr demand Δ ${occupationDiagnostics.impactPct >= 0 ? '+' : ''}${occupationDiagnostics.impactPct.toFixed(1)}%` : ''}
                             </p>
                           </>
                         ) : (
                           <p className="text-sm italic mt-1">No AI exposure data.</p>
                         )}
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-64 text-center z-50 shadow-lg leading-relaxed normal-case font-normal tracking-normal">
-                          Automation exposure: share of role's tasks that BGI modelling identifies as automatable. Bands: ≥60% high risk (red), 50–60% medium (amber), &lt;50% low (green). Aug = augmentation potential. 5yr Δ = projected employer-demand change.
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-72 text-center z-50 shadow-lg leading-relaxed normal-case font-normal tracking-normal">
+                          BGI's automation-exposure score (share of role's tasks identified as automatable) minus its augmentation potential. Bands reflect the net distribution across all occupations: High = top quartile of net risk (net ≥ +10pp), Med = above zero, Low = AI augments more than it automates (net &lt; 0).
                         </div>
                       </div>
                     );
@@ -1421,10 +1448,10 @@ const App = () => {
                             <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>TN Demand</span>
                             <DemandBadge occupation={p.SOC_2019_5_ACS_NAME_TARGET} sector={sector} compact isSelected={isSelected} />
                           </div>
-                          {/* AI exposure for destination */}
+                          {/* AI displacement risk for destination */}
                           {(p.auto_exposure_TARGET !== undefined && p.auto_exposure_TARGET !== null) && (
                             <div className="flex items-center justify-between">
-                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>AI Risk</span>
+                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>Displ. Risk</span>
                               <AIBadge auto={p.auto_exposure_TARGET} aug={p.aug_exposure_TARGET} isSelected={isSelected} />
                             </div>
                           )}
@@ -1793,23 +1820,30 @@ const App = () => {
                           <Activity size={24} className="md:w-7 md:h-7" />
                         </div>
                         <div>
-                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">AI Exposure (Destination)</p>
-                          {selectedDestRow.auto_exposure_TARGET !== undefined && selectedDestRow.auto_exposure_TARGET !== null ? (
-                            <>
-                              <p className="text-2xl md:text-3xl font-black">
-                                {(selectedDestRow.auto_exposure_TARGET * 100).toFixed(0)}<span className="text-lg text-blue-300">%</span>
-                                <span className={`ml-2 text-[10px] font-black px-2 py-0.5 rounded-full align-middle ${autoBand(selectedDestRow.auto_exposure_TARGET).dark}`}>{autoBand(selectedDestRow.auto_exposure_TARGET).label}</span>
-                              </p>
-                              <p className="text-[10px] text-blue-300 mt-1">
-                                Augmentation {selectedDestRow.aug_exposure_TARGET !== undefined && selectedDestRow.aug_exposure_TARGET !== null ? `${(selectedDestRow.aug_exposure_TARGET * 100).toFixed(0)}%` : '—'}
-                                {(occupationDiagnostics?.autoExposure !== undefined && occupationDiagnostics?.autoExposure !== null && selectedDestRow.auto_exposure_TARGET !== undefined && selectedDestRow.auto_exposure_TARGET !== null)
-                                  ? ` · vs origin ${((selectedDestRow.auto_exposure_TARGET - occupationDiagnostics.autoExposure) * 100).toFixed(0)}pp`
-                                  : ''}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-blue-300 italic mt-1">No data.</p>
-                          )}
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">Displacement Risk (Destination)</p>
+                          {(() => {
+                            const sDest = scoreAI(selectedDestRow.auto_exposure_TARGET, selectedDestRow.aug_exposure_TARGET);
+                            const sOrig = scoreAI(occupationDiagnostics?.autoExposure, occupationDiagnostics?.augExposure);
+                            if (sDest.band === 'none') {
+                              return <p className="text-sm text-blue-300 italic mt-1">No data.</p>;
+                            }
+                            const autoPct = Math.round((sDest.auto as number) * 100);
+                            const augPct  = sDest.aug !== null ? Math.round(sDest.aug * 100) : null;
+                            const netDelta = (sOrig.band !== 'none' && sDest.net !== null && sOrig.net !== null)
+                              ? Math.round((sDest.net - sOrig.net) * 100) : null;
+                            return (
+                              <>
+                                <p className="text-2xl md:text-3xl font-black">
+                                  {autoPct}<span className="text-lg text-blue-300">%</span>
+                                  <span className={`ml-2 text-[10px] font-black px-2 py-0.5 rounded-full align-middle ${sDest.bgPillDark}`}>{sDest.bandLabel.replace(' Displacement Risk', ' Risk')}</span>
+                                </p>
+                                <p className="text-[10px] text-blue-300 mt-1">
+                                  Auto {autoPct}% · Aug {augPct !== null ? `${augPct}%` : '—'}
+                                  {netDelta !== null ? ` · net vs origin ${netDelta >= 0 ? '+' : ''}${netDelta}pp` : ''}
+                                </p>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 md:gap-8">
