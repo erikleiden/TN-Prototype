@@ -442,29 +442,30 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
 /** AI exposure helpers. Thresholds align with BGI report quartile framing
  *  (top-quartile high-exposure occupations cluster around 0.60+ automation). */
 const autoBand = (score?: number) => {
-  if (score === undefined || score === null || isNaN(score)) return { label: '—', color: 'bg-slate-100 text-slate-400', dark: 'bg-white/10 text-blue-300' };
-  if (score >= 0.60) return { label: 'High Auto', color: 'bg-red-100 text-red-700', dark: 'bg-red-400/20 text-red-300' };
-  if (score >= 0.50) return { label: 'Med Auto', color: 'bg-amber-100 text-amber-700', dark: 'bg-amber-400/20 text-amber-300' };
-  return { label: 'Low Auto', color: 'bg-emerald-100 text-emerald-700', dark: 'bg-emerald-400/20 text-emerald-300' };
+  if (score === undefined || score === null || isNaN(score)) return { label: 'No data', color: 'bg-slate-100 text-slate-400', solid: 'bg-slate-500', dark: 'bg-white/10 text-blue-300', dot: '#94a3b8' };
+  if (score >= 0.60) return { label: 'High Auto Risk', color: 'bg-red-600 text-white', solid: 'bg-red-600', dark: 'bg-red-500 text-white', dot: '#dc2626' };
+  if (score >= 0.50) return { label: 'Med Auto Risk', color: 'bg-amber-500 text-white', solid: 'bg-amber-500', dark: 'bg-amber-500 text-white', dot: '#d97706' };
+  return { label: 'Low Auto Risk', color: 'bg-emerald-600 text-white', solid: 'bg-emerald-600', dark: 'bg-emerald-500 text-white', dot: '#059669' };
 };
 const augBand = (score?: number) => {
-  if (score === undefined || score === null || isNaN(score)) return { label: '—', color: 'bg-slate-100 text-slate-400', dark: 'bg-white/10 text-blue-300' };
-  if (score >= 0.55) return { label: 'High Aug', color: 'bg-emerald-100 text-emerald-700', dark: 'bg-emerald-400/20 text-emerald-300' };
-  if (score >= 0.40) return { label: 'Med Aug', color: 'bg-amber-100 text-amber-700', dark: 'bg-amber-400/20 text-amber-300' };
-  return { label: 'Low Aug', color: 'bg-slate-100 text-slate-500', dark: 'bg-white/10 text-blue-300' };
+  if (score === undefined || score === null || isNaN(score)) return { label: '—', color: 'bg-slate-100 text-slate-400', solid: 'bg-slate-500', dark: 'bg-white/10 text-blue-300' };
+  if (score >= 0.55) return { label: 'High Aug', color: 'bg-blue-600 text-white', solid: 'bg-blue-600', dark: 'bg-blue-500 text-white' };
+  if (score >= 0.40) return { label: 'Med Aug', color: 'bg-blue-400 text-white', solid: 'bg-blue-400', dark: 'bg-blue-400/80 text-white' };
+  return { label: 'Low Aug', color: 'bg-slate-200 text-slate-600', solid: 'bg-slate-400', dark: 'bg-white/10 text-blue-300' };
 };
 
-/** Compact AI exposure pair (Auto + Aug) for card-style use. */
+/** Bold AI exposure pair (Auto + Aug) for destination cards. Solid colors,
+ *  bigger contrast, clear "Auto"/"Aug" labels rather than the cryptic A/+. */
 const AIBadgePair: React.FC<{ auto?: number; aug?: number; isSelected?: boolean }> = ({ auto, aug, isSelected }) => {
   const a = autoBand(auto);
   const g = augBand(aug);
   return (
     <span className="flex items-center gap-1">
-      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isSelected ? a.dark : a.color}`} title={`Automation exposure: ${auto !== undefined ? (auto * 100).toFixed(0) : '—'}%`}>
-        {auto !== undefined ? `A ${(auto * 100).toFixed(0)}` : 'A —'}
+      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? a.dark : a.color}`} title={`Automation exposure: ${auto !== undefined && auto !== null ? Math.round(auto * 100) : '—'}%`}>
+        Auto {auto !== undefined && auto !== null ? Math.round(auto * 100) : '—'}
       </span>
-      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isSelected ? g.dark : g.color}`} title={`Augmentation exposure: ${aug !== undefined ? (aug * 100).toFixed(0) : '—'}%`}>
-        {aug !== undefined ? `+ ${(aug * 100).toFixed(0)}` : '+ —'}
+      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? g.dark : g.color}`} title={`Augmentation exposure: ${aug !== undefined && aug !== null ? Math.round(aug * 100) : '—'}%`}>
+        Aug {aug !== undefined && aug !== null ? Math.round(aug * 100) : '—'}
       </span>
     </span>
   );
@@ -1060,157 +1061,103 @@ const App = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-12 gap-10">
-            {/* Cohort visualization */}
-            <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200 flex flex-col">
-              <div className="flex items-center justify-between mb-5">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                  <BarChart3 size={12} className="text-blue-500" /> Stranded Worker Cohorts
-                </h4>
-                <button onClick={() => setSelectedCohort('All Stranded')}
-                  className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full transition-all ${
-                    selectedCohort === 'All Stranded' ? 'bg-blue-900 text-white shadow' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>
-                  All ({Math.round(treemapTotal).toLocaleString()})
-                </button>
-              </div>
-
-              {/* Three horizontal bar rows — one per cohort */}
-              <div className="flex-1 flex flex-col justify-between gap-3">
-                {(() => {
-                  const maxVal = Math.max(...treemapItems.map(t => t.value), 1);
-                  const barFill: Record<string, string> = {
-                    'Low Wage': 'bg-blue-500',
-                    'Underemployed': 'bg-amber-500',
-                    'Career Stalled': 'bg-emerald-500',
-                  };
-                  const dotColor: Record<string, string> = {
-                    'Low Wage': 'bg-blue-500',
-                    'Underemployed': 'bg-amber-500',
-                    'Career Stalled': 'bg-emerald-500',
-                  };
-                  const activeBorder: Record<string, string> = {
-                    'Low Wage': 'border-blue-400',
-                    'Underemployed': 'border-amber-400',
-                    'Career Stalled': 'border-emerald-400',
-                  };
-
-                  return treemapItems.map(item => {
-                    const isExact = selectedCohort === item.key;
-                    const isAll = selectedCohort === 'All Stranded';
-                    const barWidth = (item.value / maxVal) * 100;
-
-                    return (
-                      <div key={item.key}
-                        onClick={() => setSelectedCohort(item.key)}
-                        className={`relative group cursor-pointer flex-1 flex flex-col justify-between p-5 rounded-2xl border-2 transition-all duration-300 ${
-                          isExact
-                            ? `bg-white ${activeBorder[item.label]} shadow-md`
-                            : 'bg-slate-50 border-transparent hover:bg-white hover:border-slate-200 hover:shadow-sm'
-                        } ${!isExact && !isAll ? 'opacity-60 hover:opacity-100' : ''}`}>
-
-                        {/* Label + stats row */}
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor[item.label]}`} />
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">{item.label}</span>
-                          </div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-black text-slate-800 tabular-nums">{Math.round(item.value).toLocaleString()}</span>
-                            <span className="text-xs font-bold text-slate-400">{item.pct.toFixed(0)}%</span>
-                          </div>
-                        </div>
-
-                        {/* Progress bar */}
-                        <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-700 ${barFill[item.label]}`}
-                            style={{ width: `${barWidth}%` }}
-                          />
-                        </div>
-
-                        {/* Tooltip */}
-                        <div className="invisible group-hover:visible absolute z-50 w-72 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
-                          <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1">{item.label}</div>
-                          <div className="text-xs leading-relaxed">{item.tooltip}</div>
-                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900" />
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-
-              {/* Footer */}
-              <div className="mt-5 flex items-center justify-between">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Share of sector workforce</p>
-                <p className="text-[10px] font-black text-slate-600">
-                  {stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(1) : 0}% stranded
-                </p>
-              </div>
+          {/* Compact 3-cohort row across the top + 'All' toggle */}
+          <div className="bg-white p-5 md:p-6 rounded-[24px] md:rounded-[32px] shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <BarChart3 size={12} className="text-blue-500" /> Stranded Worker Cohorts
+              </h4>
+              <button onClick={() => setSelectedCohort('All Stranded')}
+                className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full transition-all ${
+                  selectedCohort === 'All Stranded' ? 'bg-blue-900 text-white shadow' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>
+                All ({Math.round(treemapTotal).toLocaleString()})
+              </button>
             </div>
 
-            {/* Diagnostics panel */}
-            <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+              {(() => {
+                const maxVal = Math.max(...treemapItems.map(t => t.value), 1);
+                const barFill: Record<string, string> = {
+                  'Low Wage': 'bg-blue-500',
+                  'Underemployed': 'bg-amber-500',
+                  'Career Stalled': 'bg-emerald-500',
+                };
+                const activeBorder: Record<string, string> = {
+                  'Low Wage': 'border-blue-500',
+                  'Underemployed': 'border-amber-500',
+                  'Career Stalled': 'border-emerald-500',
+                };
 
-              {/* Occupational distribution */}
-              <div className="space-y-6">
-                <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                  <Briefcase size={14} className={selectedCohort === 'Stalled' ? 'text-emerald-500' : 'text-blue-500'} />
-                  {selectedCohort === 'Stalled' ? 'Stalled Occupational Mix' : 'Occupational Distribution'}
-                </p>
-                <div className="space-y-5">
-                  {(selectedCohort === 'Stalled' ? stalledBreakdowns.occMix : cohortBreakdowns.occ).length > 0
-                    ? (selectedCohort === 'Stalled' ? stalledBreakdowns.occMix : cohortBreakdowns.occ).slice(0, 8).map(([label, val]) => (
-                        <ProgressBar key={label} label={label} value={Math.round(val)}
-                          max={Math.round((selectedCohort === 'Stalled' ? stalledBreakdowns.occMix : cohortBreakdowns.occ)[0][1])}
-                          colorClass={selectedCohort === 'Stalled' ? 'bg-emerald-500' : selectedCohort === 'Low Wage' ? 'bg-blue-500' : selectedCohort === 'Underemployed' ? 'bg-amber-500' : 'bg-blue-600'} />
-                      ))
-                    : <p className="text-xs text-slate-400 italic">No workers in this selection.</p>}
-                </div>
-              </div>
+                return treemapItems.map(item => {
+                  const isExact = selectedCohort === item.key;
+                  const isAll = selectedCohort === 'All Stranded';
+                  const barWidth = (item.value / maxVal) * 100;
 
-              {/* Age distribution — for Low Wage, Underemployed, All Stranded */}
-              {selectedCohort !== 'Stalled' && demoBreakdowns.age.length > 0 && demoBreakdowns.age.some(([, v]) => v > 0) && (
-                <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
-                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <Users size={14} className={selectedCohort === 'Low Wage' ? 'text-blue-500' : selectedCohort === 'Underemployed' ? 'text-amber-500' : 'text-blue-600'} /> Age Distribution
+                  return (
+                    <div key={item.key}
+                      onClick={() => setSelectedCohort(item.key)}
+                      className={`relative group cursor-pointer p-4 rounded-2xl border-2 transition-all duration-200 ${
+                        isExact
+                          ? `bg-white ${activeBorder[item.label]} shadow-md`
+                          : 'bg-slate-50 border-transparent hover:bg-white hover:border-slate-200 hover:shadow-sm'
+                      } ${!isExact && !isAll ? 'opacity-60 hover:opacity-100' : ''}`}>
+
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">{item.label}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{item.pct.toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-baseline justify-between mb-2">
+                        <span className="text-xl md:text-2xl font-black text-slate-800 tabular-nums">{Math.round(item.value).toLocaleString()}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-700 ${barFill[item.label]}`} style={{ width: `${barWidth}%` }} />
+                      </div>
+
+                      {/* Tooltip */}
+                      <div className="invisible group-hover:visible absolute z-50 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1">{item.label}</div>
+                        <div className="text-xs leading-relaxed">{item.tooltip}</div>
+                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900" />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Share of sector workforce</p>
+              <p className="text-[10px] font-black text-slate-600">
+                {stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(1) : 0}% stranded
+              </p>
+            </div>
+          </div>
+
+          {/* Diagnostics panel — full-width below, 3 columns inside */}
+          <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5 md:mb-6">Diagnostics: {selectedCohort}</h4>
+
+            {selectedCohort === 'Stalled' ? (
+              // Stalled: occupational mix + stall duration histogram
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
+                <div>
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Briefcase size={14} className="text-emerald-500" /> Stalled Occupational Mix
                   </p>
-                  <div className="space-y-5">
-                    {(() => {
-                      const maxA = Math.max(...demoBreakdowns.age.map(([, v]) => v), 1);
-                      const c = selectedCohort === 'Low Wage' ? 'bg-blue-500' : selectedCohort === 'Underemployed' ? 'bg-amber-500' : 'bg-blue-600';
-                      return demoBreakdowns.age.map(([label, val]) => (
-                        <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(maxA)} colorClass={c} />
-                      ));
-                    })()}
+                  <div className="space-y-3">
+                    {stalledBreakdowns.occMix.length > 0
+                      ? stalledBreakdowns.occMix.slice(0, 8).map(([label, val]) => (
+                          <ProgressBar key={label} label={label} value={Math.round(val)}
+                            max={Math.round(stalledBreakdowns.occMix[0][1])}
+                            colorClass="bg-emerald-500" />
+                        ))
+                      : <p className="text-xs text-slate-400 italic">No workers in this selection.</p>}
                   </div>
                 </div>
-              )}
-
-              {/* Education distribution — for Low Wage, Underemployed, All Stranded */}
-              {selectedCohort !== 'Stalled' && demoBreakdowns.education.length > 0 && demoBreakdowns.education.some(([, v]) => v > 0) && (
-                <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
-                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <GraduationCap size={14} className={selectedCohort === 'Low Wage' ? 'text-blue-500' : selectedCohort === 'Underemployed' ? 'text-amber-500' : 'text-blue-600'} /> Education Attainment
+                <div>
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <TrendingUp size={14} className="text-emerald-700"/> Stall Duration
                   </p>
-                  <div className="space-y-5">
-                    {(() => {
-                      const maxE = Math.max(...demoBreakdowns.education.map(([, v]) => v), 1);
-                      const c = selectedCohort === 'Low Wage' ? 'bg-blue-500' : selectedCohort === 'Underemployed' ? 'bg-amber-500' : 'bg-blue-600';
-                      return demoBreakdowns.education.map(([label, val]) => (
-                        <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(maxE)} colorClass={c} />
-                      ));
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {/* Stall duration — only for Stalled cohort */}
-              {selectedCohort === 'Stalled' && (
-                <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
-                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14} className="text-emerald-700"/> Stall Duration</p>
-                  <div className="space-y-5">
+                  <div className="space-y-3">
                     {(() => {
                       const maxDur = Math.max(...stalledBreakdowns.durations.map(([, v]) => v as number), 1);
                       return stalledBreakdowns.durations.map(([label, val]) => (
@@ -1219,8 +1166,56 @@ const App = () => {
                     })()}
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              // Low Wage / Underemployed / All Stranded: 3 columns — occ | age | edu
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
+                <div>
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Briefcase size={14} className="text-blue-500" /> Occupational Distribution
+                  </p>
+                  <div className="space-y-3">
+                    {cohortBreakdowns.occ.length > 0
+                      ? cohortBreakdowns.occ.slice(0, 8).map(([label, val]) => (
+                          <ProgressBar key={label} label={label} value={Math.round(val)}
+                            max={Math.round(cohortBreakdowns.occ[0][1])}
+                            colorClass="bg-blue-500" />
+                        ))
+                      : <p className="text-xs text-slate-400 italic">No workers in this selection.</p>}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Users size={14} className="text-emerald-500" /> Age Distribution
+                  </p>
+                  <div className="space-y-3">
+                    {demoBreakdowns.age.length > 0 && demoBreakdowns.age.some(([, v]) => v > 0)
+                      ? (() => {
+                          const maxA = Math.max(...demoBreakdowns.age.map(([, v]) => v), 1);
+                          return demoBreakdowns.age.map(([label, val]) => (
+                            <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(maxA)} colorClass="bg-emerald-500" />
+                          ));
+                        })()
+                      : <p className="text-xs text-slate-400 italic">No age data for this slice.</p>}
+                  </div>
+                </div>
+                <div className="md:col-span-2 lg:col-span-1">
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <GraduationCap size={14} className="text-amber-500" /> Education Attainment
+                  </p>
+                  <div className="space-y-3">
+                    {demoBreakdowns.education.length > 0 && demoBreakdowns.education.some(([, v]) => v > 0)
+                      ? (() => {
+                          const maxE = Math.max(...demoBreakdowns.education.map(([, v]) => v), 1);
+                          return demoBreakdowns.education.map(([label, val]) => (
+                            <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(maxE)} colorClass="bg-amber-500" />
+                          ));
+                        })()
+                      : <p className="text-xs text-slate-400 italic">No education data for this slice.</p>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -1296,29 +1291,41 @@ const App = () => {
                       ) : null;
                     })()}
                   </div>
-                  {/* AI exposure tile */}
-                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100 group relative">
-                    <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                      <Activity size={11} className="text-blue-500" /> AI Exposure
-                    </p>
-                    {occupationDiagnostics.autoExposure !== undefined && occupationDiagnostics.autoExposure !== null ? (
-                      <>
-                        <div className="flex items-baseline gap-3">
-                          <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.autoExposure * 100).toFixed(0)}%</p>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${autoBand(occupationDiagnostics.autoExposure).color}`}>{autoBand(occupationDiagnostics.autoExposure).label}</span>
-                        </div>
-                        <p className="text-[9px] text-slate-400 mt-1">
-                          Auto · Aug {occupationDiagnostics.augExposure !== undefined && occupationDiagnostics.augExposure !== null ? `${(occupationDiagnostics.augExposure * 100).toFixed(0)}%` : '—'}
-                          {occupationDiagnostics.impactPct !== undefined && occupationDiagnostics.impactPct !== null ? ` · 5yr Δ ${(occupationDiagnostics.impactPct * 100).toFixed(0)}%` : ''}
+                  {/* AI exposure tile — solid colored background reflects the band */}
+                  {(() => {
+                    const auto = occupationDiagnostics.autoExposure;
+                    const band = autoBand(auto);
+                    const hasData = auto !== undefined && auto !== null;
+                    const bgClass = hasData
+                      ? auto >= 0.60 ? 'bg-red-600 text-white border-red-700'
+                        : auto >= 0.50 ? 'bg-amber-500 text-white border-amber-600'
+                        : 'bg-emerald-600 text-white border-emerald-700'
+                      : 'bg-slate-100 text-slate-500 border-slate-200';
+                    const subLabelClass = hasData ? 'text-white/70' : 'text-slate-400';
+                    const valClass = hasData ? 'text-white' : 'text-slate-700';
+                    return (
+                      <div className={`p-4 md:p-6 rounded-[20px] md:rounded-[24px] border-2 group relative shadow-sm ${bgClass}`}>
+                        <p className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-1 ${subLabelClass}`}>
+                          <Activity size={11} /> AI Exposure
                         </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-slate-400 italic mt-1">No AI exposure data.</p>
-                    )}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-64 text-center z-50 shadow-lg leading-relaxed">
-                      Automation exposure: share of role's tasks that BGI modelling identifies as automatable. Aug = augmentation potential. 5yr Δ = projected employer-demand change.
-                    </div>
-                  </div>
+                        {hasData ? (
+                          <>
+                            <p className={`text-2xl md:text-3xl font-black ${valClass}`}>{(auto * 100).toFixed(0)}%</p>
+                            <p className={`text-[10px] font-black uppercase tracking-wider mt-1 ${subLabelClass}`}>{band.label}</p>
+                            <p className={`text-[9px] mt-2 ${subLabelClass}`}>
+                              Aug {occupationDiagnostics.augExposure !== undefined && occupationDiagnostics.augExposure !== null ? `${(occupationDiagnostics.augExposure * 100).toFixed(0)}%` : '—'}
+                              {occupationDiagnostics.impactPct !== undefined && occupationDiagnostics.impactPct !== null ? ` · 5yr Δ ${occupationDiagnostics.impactPct >= 0 ? '+' : ''}${occupationDiagnostics.impactPct.toFixed(1)}%` : ''}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm italic mt-1">No AI exposure data.</p>
+                        )}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-64 text-center z-50 shadow-lg leading-relaxed normal-case font-normal tracking-normal">
+                          Automation exposure: share of role's tasks that BGI modelling identifies as automatable. Bands: ≥60% high risk (red), 50–60% medium (amber), &lt;50% low (green). Aug = augmentation potential. 5yr Δ = projected employer-demand change.
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
