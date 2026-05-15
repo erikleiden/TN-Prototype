@@ -40,6 +40,7 @@ import crossPathwaySkillsRaw from './src/data/cross_pathway_skills.json';
 import postingDemandRaw from './src/data/posting_demand.json';
 import tnLicensesRaw from './src/data/tn_licenses.json';
 import commonCredsRaw from './src/data/common_credentials.json';
+import demographicsRaw from './src/data/demographics.json';
 
 // ============================================================================
 // TYPES
@@ -103,6 +104,22 @@ interface PathwayRow {
   at_year_5_national?: number | null;
   at_year_5_tennessee?: number | null;
   origin_share_at_year_5?: number | null;
+  // AI exposure
+  auto_exposure_SOURCE?: number | null;
+  auto_exposure_TARGET?: number | null;
+  aug_exposure_SOURCE?: number | null;
+  aug_exposure_TARGET?: number | null;
+  usecase_exposure_SOURCE?: number | null;
+  usecase_exposure_TARGET?: number | null;
+  impact_pct_baseline_SOURCE?: number | null;
+  impact_pct_baseline_TARGET?: number | null;
+  headcount_change_baseline_SOURCE?: number | null;
+  headcount_change_baseline_TARGET?: number | null;
+  // Promotion-rate fields
+  internal_promotion_rate_5_SOURCE?: number | null;
+  internal_promotion_rate_5_TARGET?: number | null;
+  external_promotion_rate_5_SOURCE?: number | null;
+  external_promotion_rate_5_TARGET?: number | null;
 }
 
 /** A row from skill_gaps_top5.json */
@@ -176,6 +193,18 @@ const postingDemand = postingDemandRaw as {
 };
 const tnLicenses = tnLicensesRaw as Record<string, LicenseEntry[]>;
 const commonCredentials = commonCredsRaw as Record<string, CredentialEntry[]>;
+
+interface DemographicsPayload {
+  edu_labels: Record<string, string>;
+  data: Record<string, {
+    age: Record<'low_wage' | 'underemployed' | 'stranded', Record<string, number>>;
+    education: Record<'low_wage' | 'underemployed' | 'stranded', Record<string, number>>;
+  }>;
+}
+const demographics = demographicsRaw as DemographicsPayload;
+const EDU_LABELS = demographics.edu_labels;
+const EDU_ORDER = ['1', '2', '3', '4', '5', '6', '7'];
+const AGE_ORDER = ['25-34', '35-44', '45-54', '55-64'];
 
 // Build lookup maps for fast access
 const demandByOcc = new Map(postingDemand.occ.map(r => [r.SOC_2019_5_ACS_NAME, r]));
@@ -410,6 +439,70 @@ const DemandBadge: React.FC<{ occupation: string; sector?: string; compact?: boo
   );
 };
 
+/** AI exposure helpers. Thresholds align with BGI report quartile framing
+ *  (top-quartile high-exposure occupations cluster around 0.60+ automation). */
+const autoBand = (score?: number) => {
+  if (score === undefined || score === null || isNaN(score)) return { label: '—', color: 'bg-slate-100 text-slate-400', dark: 'bg-white/10 text-blue-300' };
+  if (score >= 0.60) return { label: 'High Auto', color: 'bg-red-100 text-red-700', dark: 'bg-red-400/20 text-red-300' };
+  if (score >= 0.50) return { label: 'Med Auto', color: 'bg-amber-100 text-amber-700', dark: 'bg-amber-400/20 text-amber-300' };
+  return { label: 'Low Auto', color: 'bg-emerald-100 text-emerald-700', dark: 'bg-emerald-400/20 text-emerald-300' };
+};
+const augBand = (score?: number) => {
+  if (score === undefined || score === null || isNaN(score)) return { label: '—', color: 'bg-slate-100 text-slate-400', dark: 'bg-white/10 text-blue-300' };
+  if (score >= 0.55) return { label: 'High Aug', color: 'bg-emerald-100 text-emerald-700', dark: 'bg-emerald-400/20 text-emerald-300' };
+  if (score >= 0.40) return { label: 'Med Aug', color: 'bg-amber-100 text-amber-700', dark: 'bg-amber-400/20 text-amber-300' };
+  return { label: 'Low Aug', color: 'bg-slate-100 text-slate-500', dark: 'bg-white/10 text-blue-300' };
+};
+
+/** Compact AI exposure pair (Auto + Aug) for card-style use. */
+const AIBadgePair: React.FC<{ auto?: number; aug?: number; isSelected?: boolean }> = ({ auto, aug, isSelected }) => {
+  const a = autoBand(auto);
+  const g = augBand(aug);
+  return (
+    <span className="flex items-center gap-1">
+      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isSelected ? a.dark : a.color}`} title={`Automation exposure: ${auto !== undefined ? (auto * 100).toFixed(0) : '—'}%`}>
+        {auto !== undefined ? `A ${(auto * 100).toFixed(0)}` : 'A —'}
+      </span>
+      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isSelected ? g.dark : g.color}`} title={`Augmentation exposure: ${aug !== undefined ? (aug * 100).toFixed(0) : '—'}%`}>
+        {aug !== undefined ? `+ ${(aug * 100).toFixed(0)}` : '+ —'}
+      </span>
+    </span>
+  );
+};
+
+
+// ============================================================================
+// REPORT CONTEXT — excerpts from "Mobilizing Stranded Talent" (May 2026)
+// woven into the Executive Brief based on the user's geography × sector slice.
+// ============================================================================
+
+const REPORT_GEO_CONTEXT: Record<string, string> = {
+  'Nashville': 'Nashville consistently posts the lowest strandedness rates in the state — 16.5% low-wage versus 5–8pp higher elsewhere — driven by a deeper professional-tier employer base. The local lesson: where you work and where you live shape the chances of getting ahead at least as much as how hard you work or how much education you have.',
+  'Memphis': 'Memphis carries a structural mismatch on returns to education: master\'s-degree holders here have more than double the underemployment rate of their Nashville counterparts (13.4% vs 5.5%) — the single largest intra-credential gap in the data. The city produces or attracts graduate-credentialled workers but does not generate enough roles that require and reward those credentials. Younger workers feel this most acutely: 37.7% of Memphis 25–34-year-olds are stranded, against 27.2% in Nashville.',
+  'Knoxville': 'Knoxville\'s wage strandedness is concentrated in specific sectors rather than spread evenly across the labour market. Accommodation and food services posts a 70.6% low-wage rate locally — the single highest sector-MSA combination in the dataset, 22pp above Memphis and 32pp above Nashville for the same sector. Utilities also shows an anomalous 10.9% underemployment rate against a 2.7% state norm, hinting at over-qualified workers absorbed into available technical roles for lack of alternatives.',
+  'Chattanooga': 'Strandedness in Chattanooga is driven primarily by wage levels rather than qualification mismatch — underemployment sits at or below state norms in most sectors. Workers without a high-school diploma face an especially severe wage burden: 47.7% are low-wage in Chattanooga, against 36.7% in Nashville, reflecting limited entry-level progression infrastructure.',
+  'Other MSA': 'Rural Tennessee and smaller MSAs carry the heaviest low-wage burden in the state. College-degree holders here face strandedness rates well above the urban average — not because they are overqualified in the abstract, but because their local economies simply do not generate enough roles that match what they can do. 27.4% of rural bachelor\'s-degree holders are stranded overall, 7pp above Nashville.',
+  'All': 'Roughly one in four working Tennesseans is stranded. Geographic variation is one of the most striking findings in the report — Nashville sits notably below the rest of the state on low-wage strandedness, while Memphis, Knoxville, Chattanooga, and rural areas each show a distinct profile of where the problem concentrates.',
+};
+
+const REPORT_SECTOR_CONTEXT: Record<string, string> = {
+  'Accommodation and Food Services': 'The most severely stranded sector in the state — 54.2% of workers are low-wage and a further 12.0% are underemployed. The wide dispersion in low-wage strandedness across sectors means industry of employment is one of the strongest single predictors of strandedness in Tennessee.',
+  'Administrative and Support and Waste Management and Remediation Services': 'Administrative and support services is one of the most stranded sectors statewide (33.4% low-wage), with Memphis the sharpest case at 46.0% — a 12pp gap above the state average that points to local wage-floor suppression.',
+  'Retail Trade': 'Retail is among the most stranded sectors in the state. Knoxville posts an 11.3% retail underemployment rate (statewide retail: 7.0%), pointing to qualified workers absorbed into available roles in the absence of better local options.',
+  'Health Care and Social Assistance': 'Healthcare is the most AI-resilient large sector in the state (52% average automation exposure, only 14% of workers in top-quartile high-exposure roles) — and the Healthcare Ladder is the highest-impact transition pathway by average wage gain. Tennessee already has the community college infrastructure to support these transitions at scale.',
+  'Manufacturing': 'Manufacturing in Tennessee shows above-average underemployment in Memphis (7.3%), suggesting graduate-credentialled workers take available production roles in the absence of professional-tier demand. Statewide stalling rates in manufacturing run higher than service sectors (4.5% in Knoxville).',
+  'Transportation and Warehousing': 'Transportation and warehousing has by far the highest share of workers in top-quartile AI-high-exposure occupations of any large sector (76%). In Nashville and the Other MSA category, more than 89% and 94% respectively of workers in this sector are in top-quartile AI-exposure roles — a notable finding for a state that has invested heavily in logistics infrastructure.',
+  'Construction': 'Construction sits in the more AI-exposed half of Tennessee\'s sectoral profile (61% average automation exposure, 42% in top-quartile high-exposure occupations). Memphis construction also shows elevated low-wage rates (26.6%) relative to Nashville and the state overall.',
+  'Information': 'Information shows a striking divergence by geography. Memphis posts a 19.9% underemployment rate — the highest of any MSA for the sector and more than 5× Nashville\'s rate — while rural Tennessee posts 14.6%. Together these patterns suggest the sector retains degree-holding workers without absorbing them into roles commensurate with their qualifications.',
+  'Finance and Insurance': 'Finance and insurance sits at the lower end of Tennessee\'s strandedness spectrum (low-wage rate <11%) and is a frequent destination in the Professional & Financial Services pathway — one of the highest-impact destranding routes in the report.',
+  'Wholesale Trade': 'Wholesale trade shows above-average low-wage strandedness in Memphis (34.6%) and is among the more AI-exposed sectors (60% average automation exposure).',
+  'Professional, Scientific, and Technical Services': 'Professional, scientific and technical services sits at the lower-strandedness end of the state spectrum and is a common destination occupation in the Technology Pivot and Professional & Financial Services pathways.',
+  'Public Administration': 'Public administration shows modest career stalling rates (5.0% in Knoxville, highest within that MSA) but is largely AI-resilient relative to the state average.',
+  'Educational Services': 'Education contains a known structural mismatch: Teaching Assistants represent the largest single career-stalling cohort statewide (2,160 workers) while the Education Credentialing pathway shows very low observed transition volume — pointing to the absence of an accessible fast-track licensure route.',
+  'Utilities': 'Utilities is normally a low-strandedness sector statewide, but Knoxville is an exception with a 10.9% underemployment rate against the state\'s 2.7% — flagging a specific skills mismatch at TVA or other area utilities employers.',
+  'Real Estate and Rental and Leasing': 'Real estate and rental/leasing in rural Tennessee shows elevated low-wage (40.6%) and underemployment (11.0%) rates relative to other geographies.',
+  'Arts, Entertainment, and Recreation': 'Arts, entertainment and recreation in rural Tennessee shows the highest low-wage rate of any rural sector (52.4%) and one of the highest underemployment rates in the dataset (21.4%) — reflecting seasonality, part-time work, and the absence of anchor employers.',
+};
 
 // ============================================================================
 // MAIN APP COMPONENT
@@ -501,6 +594,26 @@ const App = () => {
     };
   }, [filteredByScope, durationByScope]);
 
+  /** Age + education breakdowns for the selected cohort (geography x sector slice) */
+  const demoBreakdowns = useMemo(() => {
+    const key = `${geography}|${sector}`;
+    const slice = demographics.data[key];
+    if (!slice) return { age: [], education: [] } as { age: [string, number][]; education: [string, number][] };
+    const cohortKey: 'low_wage' | 'underemployed' | 'stranded' =
+      selectedCohort === 'Low Wage' ? 'low_wage'
+      : selectedCohort === 'Underemployed' ? 'underemployed'
+      : 'stranded'; // 'Stalled' and 'All Stranded' both use the combined stranded bucket
+    const ageMap = slice.age[cohortKey] || {};
+    const eduMap = slice.education[cohortKey] || {};
+    const age: [string, number][] = AGE_ORDER
+      .filter(a => ageMap[a] !== undefined)
+      .map(a => [a, ageMap[a] || 0]);
+    const education: [string, number][] = EDU_ORDER
+      .filter(e => eduMap[e] !== undefined)
+      .map(e => [EDU_LABELS[e] || e, eduMap[e] || 0]);
+    return { age, education };
+  }, [geography, sector, selectedCohort]);
+
   // Auto-select top occupation when filters change
   useEffect(() => {
     if (cohortBreakdowns.occ.length > 0) {
@@ -524,6 +637,13 @@ const App = () => {
       strandedShare: row.share_stranded_SOURCE,
       medianWage: row.a_median_SOURCE,
       partTimeShare: row.share_part_time_SOURCE,
+      autoExposure: row.auto_exposure_SOURCE,
+      augExposure: row.aug_exposure_SOURCE,
+      useExposure: row.usecase_exposure_SOURCE,
+      impactPct: row.impact_pct_baseline_SOURCE,
+      headcountChange: row.headcount_change_baseline_SOURCE,
+      internalPromo5: row.internal_promotion_rate_5_SOURCE,
+      externalPromo5: row.external_promotion_rate_5_SOURCE,
     };
   }, [targetOccupation]);
 
@@ -608,72 +728,202 @@ const App = () => {
   // ============================================================================
 
   const handleExportBrief = () => {
+    const esc = (s: any) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
     const renderReportBar = (label: string, value: number, max: number, color: string = '#1e3a8a') => `
-      <div style="margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 6px;">
-          <span>${label}</span><span>${value.toLocaleString()}</span>
+      <div style="margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 5px;">
+          <span style="max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(label)}</span><span>${Math.round(value).toLocaleString()}</span>
         </div>
-        <div style="height: 8px; width: 100%; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
+        <div style="height: 7px; width: 100%; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
           <div style="height: 100%; width: ${max > 0 ? (value / max) * 100 : 0}%; background: ${color}; border-radius: 4px;"></div>
         </div>
       </div>`;
 
-    const maxOcc = Math.max(...cohortBreakdowns.occ.map(x => x[1]));
+    const maxOcc = Math.max(...cohortBreakdowns.occ.map(x => x[1]), 1);
+    const totalStranded = stats.lw + stats.ue + stats.st;
+    const strandedPct = stats.total > 0 ? (totalStranded / stats.total) * 100 : 0;
 
-    const reportHtml = `<html><head><title>Executive Brief: Stranded Talent Strategy</title>
+    const geoLabel = geography === 'All' ? 'Tennessee (statewide)' : geography === 'Other MSA' ? 'Other / Rural TN' : `${geography} MSA`;
+    const geoContext = REPORT_GEO_CONTEXT[geography] || '';
+    const sectorContext = REPORT_SECTOR_CONTEXT[sector] || '';
+
+    // Demographics for this geo×sector
+    const demoKey = `${geography}|${sector}`;
+    const demoSlice = (demographics.data as any)[demoKey];
+    const cohortKey = selectedCohort === 'Low Wage' ? 'low_wage' : selectedCohort === 'Underemployed' ? 'underemployed' : 'stranded';
+    const ageBuckets = demoSlice ? AGE_ORDER.map(a => [a, demoSlice.age[cohortKey]?.[a] || 0]).filter(([, v]) => (v as number) > 0) as [string, number][] : [];
+    const eduBuckets = demoSlice ? EDU_ORDER.map(e => [EDU_LABELS[e] || e, demoSlice.education[cohortKey]?.[e] || 0]).filter(([, v]) => (v as number) > 0) as [string, number][] : [];
+    const maxAge = Math.max(...ageBuckets.map(([, v]) => v), 1);
+    const maxEdu = Math.max(...eduBuckets.map(([, v]) => v), 1);
+
+    // AI exposure narrative for top occupations in this slice
+    const topOccs = cohortBreakdowns.occ.slice(0, 6);
+    const topOccsWithAI = topOccs.map(([occ, val]) => {
+      const row = nationalTransitions.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === occ)
+        || occSimilarity.find(r => r.SOC_2019_5_ACS_NAME_SOURCE === occ);
+      return {
+        occ,
+        workers: Math.round(val),
+        auto: row?.auto_exposure_SOURCE ?? null,
+        aug: row?.aug_exposure_SOURCE ?? null,
+      };
+    });
+    const highExposureOccs = topOccsWithAI.filter(o => o.auto !== null && (o.auto as number) >= 0.60);
+    const highExposureWorkers = highExposureOccs.reduce((s, o) => s + o.workers, 0);
+    const highExposureShare = totalStranded > 0 ? Math.round((highExposureWorkers / totalStranded) * 100) : 0;
+
+    const autoColor = (s: number | null) => s === null ? '#94a3b8' : s >= 0.60 ? '#dc2626' : s >= 0.50 ? '#d97706' : '#059669';
+
+    // Top destination pathway (if any). Use the auto-selected target occupation.
+    const topPathways = destinationPathways.slice(0, 5);
+
+    // Strategic narrative — keyed to slice
+    const briefDate = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const reportHtml = `<!doctype html><html><head><meta charset="utf-8"/><title>Executive Brief: Stranded Talent — ${esc(geoLabel)} · ${esc(sector)}</title>
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
-        * { box-sizing: border-box; } body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; }
-        .page { padding: 60px 70px 100px 70px; min-height: 100vh; page-break-after: always; position: relative; }
-        .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 35px; display: flex; justify-content: space-between; align-items: flex-end; }
-        .header h1 { margin: 0; text-transform: uppercase; font-size: 24px; color: #1e3a8a; font-weight: 800; letter-spacing: -0.025em; }
-        .header .meta { text-align: right; font-size: 10px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.8; }
-        h2 { color: #1e3a8a; border-left: 6px solid #f59e0b; padding-left: 12px; text-transform: uppercase; font-size: 14px; margin-top: 0; margin-bottom: 18px; font-weight: 800; }
-        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
-        .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; text-align: center; }
-        .stat-val { font-size: 28px; font-weight: 800; color: #1e40af; display: block; letter-spacing: -0.05em; }
-        .stat-label { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 8px; }
-        .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 35px; }
-        .rec-card { background: #1e3a8a; color: white; padding: 28px; border-radius: 16px; margin-bottom: 18px; page-break-inside: avoid; }
-        .rec-card h3 { color: #f59e0b; margin: 0 0 10px 0; text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; }
-        .rec-title { font-size: 16px; font-weight: 800; margin: 0 0 12px 0; color: #fef3c7; }
-        .rec-advice { font-size: 13px; line-height: 1.6; margin: 0; color: #e2e8f0; font-weight: 400; }
-        .footer { position: absolute; bottom: 40px; left: 70px; right: 70px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 8px; color: #94a3b8; text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; }
-        @media print { .page { min-height: 100vh; height: auto; } .rec-card { page-break-inside: avoid; } }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
+        * { box-sizing: border-box; } body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page { padding: 50px 60px 80px 60px; min-height: 100vh; page-break-after: always; position: relative; }
+        .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 26px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .header h1 { margin: 0; text-transform: uppercase; font-size: 22px; color: #1e3a8a; font-weight: 900; letter-spacing: -0.025em; line-height: 1.1; }
+        .header .meta { text-align: right; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.7; }
+        h2 { color: #1e3a8a; border-left: 6px solid #f59e0b; padding-left: 12px; text-transform: uppercase; font-size: 13px; margin: 0 0 14px 0; font-weight: 900; letter-spacing: 0.02em; }
+        .phase { margin: 0 0 6px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em; }
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+        .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 12px; text-align: center; }
+        .stat-val { font-size: 24px; font-weight: 900; color: #1e40af; display: block; letter-spacing: -0.04em; }
+        .stat-label { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 6px; }
+        .narrative { font-size: 12px; line-height: 1.65; color: #334155; margin: 0 0 18px 0; }
+        .narrative .quote { display: block; border-left: 3px solid #f59e0b; background: #fffbeb; padding: 12px 14px; border-radius: 8px; font-size: 11px; line-height: 1.6; color: #475569; margin: 14px 0; font-weight: 500; }
+        .col-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .panel-h { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 12px 0; }
+        .rec-card { background: #1e3a8a; color: white; padding: 22px; border-radius: 14px; margin-bottom: 12px; page-break-inside: avoid; }
+        .rec-card h3 { color: #f59e0b; margin: 0 0 6px 0; text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; }
+        .rec-title { font-size: 15px; font-weight: 800; margin: 0 0 10px 0; color: #fef3c7; }
+        .rec-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; line-height: 1.5; color: #cbd5e1; }
+        .rec-pill { font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(245, 158, 11, 0.18); color: #fef3c7; text-transform: uppercase; letter-spacing: 0.05em; }
+        .recs-list { background: #f8fafc; border: 1px solid #e2e8f0; padding: 18px 22px; border-radius: 12px; }
+        .recs-list li { font-size: 12px; line-height: 1.65; color: #334155; margin-bottom: 8px; }
+        .recs-list strong { color: #1e3a8a; }
+        .footer { position: absolute; bottom: 30px; left: 60px; right: 60px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 8px; color: #94a3b8; text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; }
+        @media print { .page { min-height: 100vh; height: auto; } .rec-card, .recs-list { page-break-inside: avoid; } }
       </style></head><body>
+
+      <!-- PAGE 1: Diagnostic at the intersection -->
       <div class="page">
         <div class="header"><div>
-          <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase I: Diagnostic Inventory</p>
-          <h1>Stranded Talent Analysis</h1>
-        </div><div class="meta">Region: ${geography === 'All' ? 'All Tennessee' : geography + ' MSA'}<br>Industry: ${sector}<br>Briefing Date: ${new Date().toLocaleDateString()}</div></div>
+          <p class="phase">Phase I · Diagnostic Inventory</p>
+          <h1>${esc(geoLabel)} &middot; ${esc(sector)}</h1>
+        </div><div class="meta">Cohort: ${esc(selectedCohort)}<br>Briefing date: ${esc(briefDate)}</div></div>
+
         <div class="stat-grid">
-          <div class="stat-box"><span class="stat-label">Total Scope</span><span class="stat-val">${stats.total.toLocaleString()}</span></div>
-          <div class="stat-box"><span class="stat-label">Low Wage</span><span class="stat-val">${stats.lw.toLocaleString()}</span></div>
-          <div class="stat-box"><span class="stat-label">Underemployed</span><span class="stat-val">${stats.ue.toLocaleString()}</span></div>
-          <div class="stat-box"><span class="stat-label">Stalled</span><span class="stat-val">${Math.round(stats.st).toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Total Workforce</span><span class="stat-val">${stats.total.toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Stranded</span><span class="stat-val">${totalStranded.toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Stranded Rate</span><span class="stat-val">${strandedPct.toFixed(0)}%</span></div>
+          <div class="stat-box"><span class="stat-label">Top-quartile AI exposed</span><span class="stat-val">${highExposureShare}%</span></div>
         </div>
-        <div>
-          <h2>Occupational Distribution: ${selectedCohort}</h2>
-          <p style="font-size: 11px; color: #64748b; margin: 0 0 18px 0; text-transform: uppercase; font-weight: 800;">Primary Target Nodes</p>
-          ${cohortBreakdowns.occ.slice(0, 12).map(([l, v]) => renderReportBar(l, v, maxOcc, '#10b981')).join('')}
-        </div>
-        <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
+
+        <h2>What this slice looks like</h2>
+        <p class="narrative">
+          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled. Of those, roughly <strong>${highExposureShare}% sit in occupations BGI scores in the top quartile for AI automation exposure</strong> — the report's "double-jeopardy" population, currently stranded and in roles where the risk of further disruption is elevated.
+        </p>
+
+        ${geoContext ? `<p class="narrative"><strong style="color: #1e3a8a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em;">${esc(geography === 'All' ? 'Statewide context' : geography + ' context')}</strong><span class="quote">${esc(geoContext)}</span></p>` : ''}
+        ${sectorContext ? `<p class="narrative"><strong style="color: #1e3a8a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em;">Sector context</strong><span class="quote">${esc(sectorContext)}</span></p>` : ''}
+
+        <div class="footer">Tennessee BGI Strategic Workforce Initiative · ${esc(geoLabel)} · ${esc(sector)} · Page 1 / 3</div>
       </div>
+
+      <!-- PAGE 2: Who they are -->
       <div class="page">
         <div class="header"><div>
-          <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 800; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em;">Phase II: Career Pathways</p>
-          <h1>Destination Analysis</h1>
-        </div><div class="meta">Focus Occupation: ${targetOccupation}<br>Target Cohort: ${selectedCohort}</div></div>
-        <p style="font-size: 13px; line-height: 1.6; color: #334155; margin: 0 0 30px 0;">
-          Career pathway analysis for <strong>${targetOccupation}</strong> within <strong>${geography === 'All' ? 'Tennessee' : geography}</strong>. Top destination occupations identified through observed transitions and skill similarity scoring.</p>
-        ${destinationPathways.map((p, i) => `<div class="rec-card">
-          <h3>Destination ${String(i + 1).padStart(2, '0')}</h3>
-          <p class="rec-title">${p.SOC_2019_5_ACS_NAME_TARGET}</p>
-          <p class="rec-advice">Wage Gain: +$${p.potential_wage_gain.toLocaleString()} (${Math.round(p.potential_wage_gain_pct * 100)}%) | Similarity: ${p.similarity_rating ? p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1) : '—'} | Strandedness Change: ${Math.round(p.diff_strandedness * 100)}% | TN Demand: ${p.demand_category_TARGET || 'N/A'}</p>
-        </div>`).join('')}
-        <div class="footer">Tennessee BGI Strategic Workforce Initiative | Executive Confidential</div>
+          <p class="phase">Phase I · Demographic Composition</p>
+          <h1>${esc(selectedCohort)} workers in ${esc(geoLabel)} ${esc(sector)}</h1>
+        </div><div class="meta">${ageBuckets.length > 0 ? 'Source: BGI cross-tab of ACS microdata' : ''}</div></div>
+
+        <div class="col-2">
+          <div>
+            <p class="panel-h">Top occupational concentrations</p>
+            ${cohortBreakdowns.occ.slice(0, 10).map(([l, v]) => renderReportBar(l, v, maxOcc, '#1e3a8a')).join('')}
+          </div>
+          <div>
+            ${ageBuckets.length > 0 ? `
+              <p class="panel-h">Age distribution</p>
+              ${ageBuckets.map(([l, v]) => renderReportBar(l, v, maxAge, '#10b981')).join('')}
+            ` : ''}
+            ${eduBuckets.length > 0 ? `
+              <p class="panel-h" style="margin-top: 22px;">Education attainment</p>
+              ${eduBuckets.map(([l, v]) => renderReportBar(l, v, maxEdu, '#f59e0b')).join('')}
+            ` : ''}
+          </div>
+        </div>
+
+        ${topOccsWithAI.some(o => o.auto !== null) ? `
+        <h2 style="margin-top: 26px;">AI exposure across the top stranded occupations</h2>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+          <thead><tr style="text-align: left; color: #64748b; text-transform: uppercase; font-size: 9px; letter-spacing: 0.1em; font-weight: 800;">
+            <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0;">Occupation</th>
+            <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">${esc(selectedCohort)} workers</th>
+            <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">Automation</th>
+            <th style="padding: 8px 6px; border-bottom: 1px solid #e2e8f0; text-align: right;">Augmentation</th>
+          </tr></thead>
+          <tbody>
+          ${topOccsWithAI.map(o => `<tr>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; font-weight: 600;">${esc(o.occ)}</td>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #475569;">${o.workers.toLocaleString()}</td>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: ${autoColor(o.auto)};">${o.auto !== null ? `${Math.round(o.auto * 100)}%` : '—'}</td>
+            <td style="padding: 6px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #475569;">${o.aug !== null ? `${Math.round(o.aug * 100)}%` : '—'}</td>
+          </tr>`).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+
+        <div class="footer">Tennessee BGI Strategic Workforce Initiative · ${esc(geoLabel)} · ${esc(sector)} · Page 2 / 3</div>
       </div>
-      <script>window.print();</script></body></html>`;
+
+      <!-- PAGE 3: Pathways and recommendations -->
+      <div class="page">
+        <div class="header"><div>
+          <p class="phase">Phase II · Recommended Pathways</p>
+          <h1>${targetOccupation ? esc(targetOccupation) : 'Pathway destinations'}</h1>
+        </div><div class="meta">Pathway mode: ${esc(pathwayMode === 'transitions' ? 'Observed transitions' : 'Skill similarity')}</div></div>
+
+        ${targetOccupation ? `<p class="narrative">
+          Career pathway analysis for <strong>${esc(targetOccupation)}</strong> in ${esc(geoLabel)}. Destinations below combine BGI-observed transition flows with high-similarity skill matches; each is shown with its wage gain, similarity rating, and AI exposure profile so policymakers can pick durable pathways.
+        </p>` : '<p class="narrative">No focus occupation selected. Choose an occupation in the dashboard to generate a tailored pathway page.</p>'}
+
+        ${topPathways.map((p, i) => {
+          const autoScore = p.auto_exposure_TARGET;
+          const augScore = p.aug_exposure_TARGET;
+          const intP = p.internal_promotion_rate_5_TARGET;
+          return `<div class="rec-card">
+            <h3>Destination ${String(i + 1).padStart(2, '0')}${p.similarity_rating ? ` · ${esc(p.similarity_rating.charAt(0).toUpperCase() + p.similarity_rating.slice(1))} similarity` : ''}</h3>
+            <p class="rec-title">${esc(p.SOC_2019_5_ACS_NAME_TARGET)}</p>
+            <div class="rec-row">
+              <span><strong style="color: #fef3c7;">Wage gain:</strong> +$${Math.round(p.potential_wage_gain).toLocaleString()} (${Math.round(p.potential_wage_gain_pct * 100)}%)</span>
+              <span><strong style="color: #fef3c7;">Strandedness change:</strong> ${Math.round(p.diff_strandedness * 100)}%</span>
+              <span><strong style="color: #fef3c7;">TN demand:</strong> ${esc(p.demand_category_TARGET || 'N/A')}</span>
+              ${(autoScore !== undefined && autoScore !== null) ? `<span class="rec-pill" style="background: ${autoScore >= 0.60 ? 'rgba(220, 38, 38, 0.25)' : autoScore >= 0.50 ? 'rgba(245, 158, 11, 0.22)' : 'rgba(16, 185, 129, 0.22)'};">AI auto ${Math.round(autoScore * 100)}%</span>` : ''}
+              ${(augScore !== undefined && augScore !== null) ? `<span class="rec-pill">Aug ${Math.round(augScore * 100)}%</span>` : ''}
+              ${(intP !== undefined && intP !== null) ? `<span class="rec-pill">Internal promo ${Math.round(intP * 100)}%</span>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+
+        <h2 style="margin-top: 22px;">Strategic implications</h2>
+        <ul class="recs-list">
+          ${strandedPct >= 25 ? `<li><strong>Sector triage.</strong> ${esc(sector)} in ${esc(geoLabel)} runs above the statewide ~25% strandedness baseline. Prioritise this intersection for credential-pathway investment.</li>` : `<li><strong>Below-baseline slice.</strong> ${esc(sector)} in ${esc(geoLabel)} sits at ${strandedPct.toFixed(0)}% strandedness, below the statewide baseline — interventions should focus on the specific stranded subpopulations identified on page 2 rather than blanket sector treatments.</li>`}
+          ${highExposureShare >= 40 ? `<li><strong>Double-jeopardy concentration.</strong> ${highExposureShare}% of stranded workers in this slice sit in top-quartile AI-exposure occupations — exceeding the statewide ~39% average. Pathway choices that route into low-exposure destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable AI exposure.</strong> ${highExposureShare}% of stranded workers in this slice sit in top-quartile AI-exposure occupations, below the statewide ~39% average — strandedness here is more a pay/utilisation question than a disruption question.</li>`}
+          <li><strong>Pathway architecture.</strong> The report identifies seven destranding pathway types. For this slice, the most relevant typically include the Healthcare Ladder (highest wage gain, lowest AI exposure), Professional & Financial Services (highest strandedness reduction), and Project & Operations Management (most credential-accessible, sector-agnostic).</li>
+          <li><strong>Within-occupation lever.</strong> Promotion-rate and full-time-share data on page 2 indicate that, for some occupations, scaling part-time hours up to full-time and supporting internal promotion are credible alternatives to a full pathway switch. These are lower-cost interventions.</li>
+        </ul>
+
+        <div class="footer">Tennessee BGI Strategic Workforce Initiative · ${esc(geoLabel)} · ${esc(sector)} · Page 3 / 3</div>
+      </div>
+
+      <script>setTimeout(function(){ window.print(); }, 600);</script></body></html>`;
 
     const win = window.open('', '_blank');
     win?.document.write(reportHtml);
@@ -722,11 +972,19 @@ const App = () => {
             <p className="text-[9px] md:text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Tennessee BGI Policy Dashboard</p>
           </div>
         </div>
-        <button onClick={handleExportBrief}
-          className="flex items-center gap-2 md:gap-3 bg-white hover:bg-slate-100 text-blue-950 px-4 py-2 md:px-8 md:py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group w-full md:w-auto justify-center">
-          <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:translate-y-0.5 transition-transform" />
-          <span className="hidden sm:inline">Export Executive Brief</span><span className="sm:hidden">Export Brief</span>
-        </button>
+        <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
+          <a href="/Mobilizing-Stranded-Talent-Report.docx" download
+            className="flex items-center gap-2 md:gap-3 bg-amber-500 hover:bg-amber-400 text-blue-950 px-4 py-2 md:px-6 md:py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group flex-1 md:flex-none justify-center"
+            title="Download the full 'Mobilizing Stranded Talent' research report (Word document)">
+            <FileText size={16} className="md:w-[18px] md:h-[18px] group-hover:translate-y-0.5 transition-transform" />
+            <span className="hidden sm:inline">Download Full Report</span><span className="sm:hidden">Full Report</span>
+          </a>
+          <button onClick={handleExportBrief}
+            className="flex items-center gap-2 md:gap-3 bg-white hover:bg-slate-100 text-blue-950 px-4 py-2 md:px-6 md:py-3 rounded-2xl font-black text-xs uppercase transition-all shadow-xl active:scale-95 group flex-1 md:flex-none justify-center">
+            <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:translate-y-0.5 transition-transform" />
+            <span className="hidden sm:inline">Export Executive Brief</span><span className="sm:hidden">Export Brief</span>
+          </button>
+        </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 md:px-10 py-8 md:py-12 space-y-12 md:space-y-24">
@@ -742,36 +1000,40 @@ const App = () => {
               <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Baseline Diagnostic Definition</p>
             </div>
           </div>
-          <div className="grid grid-cols-12 gap-10">
-            <div className="col-span-12 lg:col-span-7">
-              <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
-                  <MapPin size={12} className="text-blue-500" /> Geography
-                </h4>
+          <div className="space-y-6 md:space-y-8">
+            {/* Full-width map */}
+            <div className="bg-white p-6 md:p-10 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-8 flex items-center gap-2">
+                <MapPin size={12} className="text-blue-500" /> Geography
+                <span className="ml-auto text-[9px] font-bold text-slate-400 tracking-wider normal-case">Click a region to filter</span>
+              </h4>
+              <div className="max-w-5xl mx-auto">
                 <TennesseeMap selectedRegion={geography} onRegionClick={setGeography} />
               </div>
             </div>
-            <div className="col-span-12 lg:col-span-5 flex flex-col justify-center gap-6">
-              <div className="bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
-                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2">
-                  <Briefcase size={14} className="text-blue-500" /> NAICS Sector
-                </label>
-                <div className="relative">
-                  <select value={sector} onChange={(e) => setSector(e.target.value)}
-                    className="w-full bg-[#F8FAFC] border-2 border-slate-100 rounded-[24px] px-8 py-5 text-sm font-black appearance-none focus:border-blue-500 transition-all outline-none pr-16">
-                    {sectors.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><ChevronDown size={24} /></div>
+
+            {/* Sector selector + stat tiles row */}
+            <div className="bg-white p-5 md:p-8 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 items-stretch">
+                <div className="lg:col-span-6">
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Briefcase size={14} className="text-blue-500" /> NAICS Sector
+                  </label>
+                  <div className="relative">
+                    <select value={sector} onChange={(e) => setSector(e.target.value)}
+                      className="w-full bg-[#F8FAFC] border-2 border-slate-100 rounded-[20px] px-6 py-4 text-sm font-black appearance-none focus:border-blue-500 transition-all outline-none pr-14">
+                      {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><ChevronDown size={20} /></div>
+                  </div>
                 </div>
-                <div className="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-                  <div className="p-5 md:p-6 bg-blue-900 rounded-[24px] md:rounded-[32px] text-white">
-                    <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Total Workers</p>
-                    <p className="text-2xl md:text-3xl font-black">{stats.total.toLocaleString()}</p>
-                  </div>
-                  <div className="p-5 md:p-6 bg-amber-500 rounded-[24px] md:rounded-[32px] text-blue-950">
-                    <p className="text-[10px] font-black text-blue-950/40 uppercase tracking-widest mb-2">Stranded Rate</p>
-                    <p className="text-2xl md:text-3xl font-black">{stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(0) : 0}%</p>
-                  </div>
+                <div className="lg:col-span-3 p-5 bg-blue-900 rounded-[20px] text-white flex flex-col justify-center">
+                  <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-1">Total Workers</p>
+                  <p className="text-2xl md:text-3xl font-black">{stats.total.toLocaleString()}</p>
+                </div>
+                <div className="lg:col-span-3 p-5 bg-amber-500 rounded-[20px] text-blue-950 flex flex-col justify-center">
+                  <p className="text-[10px] font-black text-blue-950/40 uppercase tracking-widest mb-1">Stranded Rate</p>
+                  <p className="text-2xl md:text-3xl font-black">{stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(0) : 0}%</p>
                 </div>
               </div>
             </div>
@@ -882,6 +1144,8 @@ const App = () => {
             {/* Diagnostics panel */}
             <div className="col-span-12 lg:col-span-6 bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 md:mb-10">Diagnostics: {selectedCohort}</h4>
+
+              {/* Occupational distribution */}
               <div className="space-y-6">
                 <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                   <Briefcase size={14} className={selectedCohort === 'Stalled' ? 'text-emerald-500' : 'text-blue-500'} />
@@ -897,6 +1161,44 @@ const App = () => {
                     : <p className="text-xs text-slate-400 italic">No workers in this selection.</p>}
                 </div>
               </div>
+
+              {/* Age distribution — for Low Wage, Underemployed, All Stranded */}
+              {selectedCohort !== 'Stalled' && demoBreakdowns.age.length > 0 && demoBreakdowns.age.some(([, v]) => v > 0) && (
+                <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <Users size={14} className={selectedCohort === 'Low Wage' ? 'text-blue-500' : selectedCohort === 'Underemployed' ? 'text-amber-500' : 'text-blue-600'} /> Age Distribution
+                  </p>
+                  <div className="space-y-5">
+                    {(() => {
+                      const maxA = Math.max(...demoBreakdowns.age.map(([, v]) => v), 1);
+                      const c = selectedCohort === 'Low Wage' ? 'bg-blue-500' : selectedCohort === 'Underemployed' ? 'bg-amber-500' : 'bg-blue-600';
+                      return demoBreakdowns.age.map(([label, val]) => (
+                        <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(maxA)} colorClass={c} />
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Education distribution — for Low Wage, Underemployed, All Stranded */}
+              {selectedCohort !== 'Stalled' && demoBreakdowns.education.length > 0 && demoBreakdowns.education.some(([, v]) => v > 0) && (
+                <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
+                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <GraduationCap size={14} className={selectedCohort === 'Low Wage' ? 'text-blue-500' : selectedCohort === 'Underemployed' ? 'text-amber-500' : 'text-blue-600'} /> Education Attainment
+                  </p>
+                  <div className="space-y-5">
+                    {(() => {
+                      const maxE = Math.max(...demoBreakdowns.education.map(([, v]) => v), 1);
+                      const c = selectedCohort === 'Low Wage' ? 'bg-blue-500' : selectedCohort === 'Underemployed' ? 'bg-amber-500' : 'bg-blue-600';
+                      return demoBreakdowns.education.map(([label, val]) => (
+                        <ProgressBar key={label} label={label} value={Math.round(val)} max={Math.round(maxE)} colorClass={c} />
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Stall duration — only for Stalled cohort */}
               {selectedCohort === 'Stalled' && (
                 <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-slate-100 space-y-6">
                   <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14} className="text-emerald-700"/> Stall Duration</p>
@@ -949,7 +1251,7 @@ const App = () => {
                 <p className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2">
                   <Target size={14} className="text-blue-500" /> Occupation Diagnostics: {targetOccupation}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 md:gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
                   <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100">
                     <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Stranded Share</p>
                     <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.strandedShare * 100).toFixed(1)}%</p>
@@ -978,6 +1280,29 @@ const App = () => {
                         <p className="text-[9px] text-slate-400 mt-2">Trend: {growth.share_growth_trend}</p>
                       ) : null;
                     })()}
+                  </div>
+                  {/* AI exposure tile */}
+                  <div className="p-4 md:p-6 bg-slate-50 rounded-[20px] md:rounded-[24px] border border-slate-100 group relative">
+                    <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                      <Activity size={11} className="text-blue-500" /> AI Exposure
+                    </p>
+                    {occupationDiagnostics.autoExposure !== undefined && occupationDiagnostics.autoExposure !== null ? (
+                      <>
+                        <div className="flex items-baseline gap-3">
+                          <p className="text-xl md:text-2xl font-black text-blue-900">{(occupationDiagnostics.autoExposure * 100).toFixed(0)}%</p>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${autoBand(occupationDiagnostics.autoExposure).color}`}>{autoBand(occupationDiagnostics.autoExposure).label}</span>
+                        </div>
+                        <p className="text-[9px] text-slate-400 mt-1">
+                          Auto · Aug {occupationDiagnostics.augExposure !== undefined && occupationDiagnostics.augExposure !== null ? `${(occupationDiagnostics.augExposure * 100).toFixed(0)}%` : '—'}
+                          {occupationDiagnostics.impactPct !== undefined && occupationDiagnostics.impactPct !== null ? ` · 5yr Δ ${(occupationDiagnostics.impactPct * 100).toFixed(0)}%` : ''}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-400 italic mt-1">No AI exposure data.</p>
+                    )}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-64 text-center z-50 shadow-lg leading-relaxed">
+                      Automation exposure: share of role's tasks that BGI modelling identifies as automatable. Aug = augmentation potential. 5yr Δ = projected employer-demand change.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1072,6 +1397,13 @@ const App = () => {
                             <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>TN Demand</span>
                             <DemandBadge occupation={p.SOC_2019_5_ACS_NAME_TARGET} sector={sector} compact isSelected={isSelected} />
                           </div>
+                          {/* AI exposure for destination */}
+                          {(p.auto_exposure_TARGET !== undefined && p.auto_exposure_TARGET !== null) && (
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>AI Exposure</span>
+                              <AIBadgePair auto={p.auto_exposure_TARGET} aug={p.aug_exposure_TARGET} isSelected={isSelected} />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1237,23 +1569,58 @@ const App = () => {
                   </div>
                   {expandedRec === 2 && (
                     <div className="mt-6 md:mt-8" onClick={e => e.stopPropagation()}>
-                      {occupationDiagnostics && (
-                        <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
-                          <p className="text-sm md:text-base text-slate-700 leading-relaxed font-medium">
-                            Not all {pluralize(targetOccupation)} are stranded &mdash; <span className="font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</span> in this occupation are not classified as stranded. For workers who want to stay in their current field, switching employers can unlock wage growth. Internal mobility and job-hopping within the same occupation is a viable strategy.
-                          </p>
-                          <div className="mt-4 flex items-center gap-6">
-                            <div>
-                              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Non-Stranded Rate</p>
-                              <p className="text-lg font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</p>
+                      {occupationDiagnostics && (() => {
+                        const ftShare = 1 - (occupationDiagnostics.partTimeShare || 0);
+                        const intP = occupationDiagnostics.internalPromo5;
+                        const extP = occupationDiagnostics.externalPromo5;
+                        const hasPromo = (intP !== undefined && intP !== null) || (extP !== undefined && extP !== null);
+                        const totalPromo = (intP || 0) + (extP || 0);
+                        return (
+                          <div className="space-y-4">
+                            <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
+                              <p className="text-sm md:text-base text-slate-700 leading-relaxed font-medium">
+                                Stranded is not a universal condition of this occupation &mdash; <span className="font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</span> of {pluralize(targetOccupation)} are not stranded. Two within-occupation levers can move workers off that line without changing field: (1) scaling part-time hours up to full-time, and (2) advancing into higher-paying roles within the same occupational lane through promotion or job-switching.
+                              </p>
                             </div>
-                            <div>
-                              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Current Median Wage</p>
-                              <p className="text-lg font-black text-blue-900">${occupationDiagnostics.medianWage.toLocaleString()}</p>
+
+                            {/* Tile grid: Non-stranded, FT share, Internal Promo, External Promo */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                              <div className="p-4 bg-white rounded-2xl border border-slate-100">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Non-Stranded Rate</p>
+                                <p className="text-lg md:text-xl font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</p>
+                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay & utilisation</p>
+                              </div>
+                              <div className="p-4 bg-white rounded-2xl border border-slate-100">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Full-Time Share</p>
+                                <p className="text-lg md:text-xl font-black text-blue-900">{(ftShare * 100).toFixed(1)}%</p>
+                                <p className="text-[9px] text-slate-400 mt-1">{(occupationDiagnostics.partTimeShare * 100).toFixed(1)}% are PT &mdash; hours scale-up is a viable lever</p>
+                              </div>
+                              <div className="p-4 bg-white rounded-2xl border border-slate-100 group relative">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Internal Promotion (5yr)</p>
+                                <p className="text-lg md:text-xl font-black text-blue-900">{intP !== undefined && intP !== null ? `${(intP * 100).toFixed(1)}%` : '—'}</p>
+                                <p className="text-[9px] text-slate-400 mt-1">promoted by same employer within 5 yrs</p>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-56 text-center z-50 shadow-lg leading-relaxed">
+                                  Share of workers in this occupation promoted to a higher-paying role at the same employer within 5 years (national).
+                                </div>
+                              </div>
+                              <div className="p-4 bg-white rounded-2xl border border-slate-100 group relative">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">External Job-Move (5yr)</p>
+                                <p className="text-lg md:text-xl font-black text-blue-900">{extP !== undefined && extP !== null ? `${(extP * 100).toFixed(1)}%` : '—'}</p>
+                                <p className="text-[9px] text-slate-400 mt-1">advanced via switching employer in 5 yrs</p>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-56 text-center z-50 shadow-lg leading-relaxed">
+                                  Share of workers in this occupation who advanced to a higher-paying role by switching to a different employer within 5 years.
+                                </div>
+                              </div>
                             </div>
+
+                            {hasPromo && (
+                              <p className="text-xs text-slate-500 italic">
+                                Roughly <span className="font-black text-blue-900">{(totalPromo * 100).toFixed(0)}%</span> of {pluralize(targetOccupation)} nationally see a meaningful advance within five years without leaving the occupation. Where that rate is high, in-role advancement is a credible alternative to a full pathway switch.
+                              </p>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -1366,6 +1733,30 @@ const App = () => {
                               <p className="text-[10px] text-blue-300 mt-1">Trend: {growth.share_growth_trend}</p>
                             ) : null;
                           })()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 md:gap-8">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] bg-white/5 flex items-center justify-center text-amber-400 shadow-inner flex-shrink-0">
+                          <Activity size={24} className="md:w-7 md:h-7" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] md:text-[11px] font-bold uppercase text-blue-300 tracking-widest mb-1 md:mb-2">AI Exposure (Destination)</p>
+                          {selectedDestRow.auto_exposure_TARGET !== undefined && selectedDestRow.auto_exposure_TARGET !== null ? (
+                            <>
+                              <p className="text-2xl md:text-3xl font-black">
+                                {(selectedDestRow.auto_exposure_TARGET * 100).toFixed(0)}<span className="text-lg text-blue-300">%</span>
+                                <span className={`ml-2 text-[10px] font-black px-2 py-0.5 rounded-full align-middle ${autoBand(selectedDestRow.auto_exposure_TARGET).dark}`}>{autoBand(selectedDestRow.auto_exposure_TARGET).label}</span>
+                              </p>
+                              <p className="text-[10px] text-blue-300 mt-1">
+                                Augmentation {selectedDestRow.aug_exposure_TARGET !== undefined && selectedDestRow.aug_exposure_TARGET !== null ? `${(selectedDestRow.aug_exposure_TARGET * 100).toFixed(0)}%` : '—'}
+                                {(occupationDiagnostics?.autoExposure !== undefined && occupationDiagnostics?.autoExposure !== null && selectedDestRow.auto_exposure_TARGET !== undefined && selectedDestRow.auto_exposure_TARGET !== null)
+                                  ? ` · vs origin ${((selectedDestRow.auto_exposure_TARGET - occupationDiagnostics.autoExposure) * 100).toFixed(0)}pp`
+                                  : ''}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-blue-300 italic mt-1">No data.</p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 md:gap-8">
