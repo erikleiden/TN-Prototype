@@ -454,19 +454,21 @@ const augBand = (score?: number) => {
   return { label: 'Low Aug', color: 'bg-slate-200 text-slate-600', solid: 'bg-slate-400', dark: 'bg-white/10 text-blue-300' };
 };
 
-/** Bold AI exposure pair (Auto + Aug) for destination cards. Solid colors,
- *  bigger contrast, clear "Auto"/"Aug" labels rather than the cryptic A/+. */
-const AIBadgePair: React.FC<{ auto?: number; aug?: number; isSelected?: boolean }> = ({ auto, aug, isSelected }) => {
-  const a = autoBand(auto);
-  const g = augBand(aug);
+/** Single AI risk pill for destination/pathway cards. Color-coded band based on
+ *  automation exposure (the primary durability signal for destranding pathways).
+ *  Augmentation surfaces on hover for users who want the second dimension. */
+const AIBadge: React.FC<{ auto?: number | null; aug?: number | null; isSelected?: boolean }> = ({ auto, aug, isSelected }) => {
+  const hasData = auto !== undefined && auto !== null;
+  if (!hasData) {
+    return <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-400'}`}>No data</span>;
+  }
+  const band = autoBand(auto);
+  const pct = Math.round((auto as number) * 100);
+  const shortLabel = pct >= 60 ? 'High Risk' : pct >= 50 ? 'Med Risk' : 'Low Risk';
   return (
-    <span className="flex items-center gap-1">
-      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? a.dark : a.color}`} title={`Automation exposure: ${auto !== undefined && auto !== null ? Math.round(auto * 100) : '—'}%`}>
-        Auto {auto !== undefined && auto !== null ? Math.round(auto * 100) : '—'}
-      </span>
-      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSelected ? g.dark : g.color}`} title={`Augmentation exposure: ${aug !== undefined && aug !== null ? Math.round(aug * 100) : '—'}%`}>
-        Aug {aug !== undefined && aug !== null ? Math.round(aug * 100) : '—'}
-      </span>
+    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${isSelected ? band.dark : band.color}`}
+      title={`Automation exposure ${pct}% (${band.label})${aug !== undefined && aug !== null ? ` · Augmentation ${Math.round((aug as number) * 100)}%` : ''}`}>
+      {shortLabel} · {pct}
     </span>
   );
 };
@@ -1422,8 +1424,8 @@ const App = () => {
                           {/* AI exposure for destination */}
                           {(p.auto_exposure_TARGET !== undefined && p.auto_exposure_TARGET !== null) && (
                             <div className="flex items-center justify-between">
-                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>AI Exposure</span>
-                              <AIBadgePair auto={p.auto_exposure_TARGET} aug={p.aug_exposure_TARGET} isSelected={isSelected} />
+                              <span className={`text-[8px] md:text-[9px] font-bold uppercase tracking-widest ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>AI Risk</span>
+                              <AIBadge auto={p.auto_exposure_TARGET} aug={p.aug_exposure_TARGET} isSelected={isSelected} />
                             </div>
                           )}
                         </div>
@@ -1592,16 +1594,45 @@ const App = () => {
                   {expandedRec === 2 && (
                     <div className="mt-6 md:mt-8" onClick={e => e.stopPropagation()}>
                       {occupationDiagnostics && (() => {
-                        const ftShare = 1 - (occupationDiagnostics.partTimeShare || 0);
+                        const ptShare = occupationDiagnostics.partTimeShare || 0;
+                        const ftShare = 1 - ptShare;
                         const intP = occupationDiagnostics.internalPromo5;
                         const extP = occupationDiagnostics.externalPromo5;
-                        const hasPromo = (intP !== undefined && intP !== null) || (extP !== undefined && extP !== null);
+                        const hasIntP = intP !== undefined && intP !== null;
+                        const hasExtP = extP !== undefined && extP !== null;
+                        const hasPromo = hasIntP || hasExtP;
                         const totalPromo = (intP || 0) + (extP || 0);
+
+                        // Lever-viability thresholds. Hours scale-up only meaningful when
+                        // a real PT cohort exists; in-role advancement only when 5-year
+                        // promotion+job-move rates clear ~10% combined.
+                        const HOURS_VIABLE = ptShare >= 0.15;
+                        const HOURS_PARTIAL = ptShare >= 0.07 && ptShare < 0.15;
+                        const PROMO_STRONG = hasPromo && totalPromo >= 0.20;
+                        const PROMO_MODERATE = hasPromo && totalPromo >= 0.10 && totalPromo < 0.20;
+
+                        // Headline framing — which levers are live for THIS occupation
+                        const leverDescription = (() => {
+                          if (HOURS_VIABLE && (PROMO_STRONG || PROMO_MODERATE)) {
+                            return <>Two within-occupation levers are credible here: <strong>scaling part-time hours up to full-time</strong> (a meaningful {(ptShare * 100).toFixed(0)}% of workers are part-time) and <strong>in-role advancement</strong> via promotion or employer switching.</>;
+                          }
+                          if (HOURS_VIABLE) {
+                            return <>The primary within-occupation lever here is <strong>scaling part-time hours up to full-time</strong> — {(ptShare * 100).toFixed(0)}% of workers are part-time, a meaningful cohort. Promotion data is {hasPromo ? 'limited' : 'unavailable'} for this occupation, so in-role advancement is a weaker bet.</>;
+                          }
+                          if (PROMO_STRONG || PROMO_MODERATE) {
+                            return <>Most workers in this occupation are already full-time, so hours scale-up isn't a meaningful lever. <strong>In-role advancement</strong> via promotion or employer switching is the live within-occupation path: roughly {(totalPromo * 100).toFixed(0)}% see a meaningful advance within five years.</>;
+                          }
+                          if (HOURS_PARTIAL) {
+                            return <>Within-occupation levers are limited for this role: only {(ptShare * 100).toFixed(0)}% are part-time (modest hours scale-up potential), and promotion data is {hasPromo ? 'thin' : 'unavailable'}. A cross-occupation pathway is likely the stronger move for stranded workers here.</>;
+                          }
+                          return <>Within-occupation mobility is a weak lever for this role: <strong>{(ftShare * 100).toFixed(0)}% are already full-time</strong> (so hours scale-up doesn't apply), and {hasPromo ? `5-year promotion + job-move rates total only ${(totalPromo * 100).toFixed(0)}%` : 'promotion data is unavailable'}. For these workers, a cross-occupation pathway is likely the stronger move.</>;
+                        })();
+
                         return (
                           <div className="space-y-4">
                             <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
                               <p className="text-sm md:text-base text-slate-700 leading-relaxed font-medium">
-                                Stranded is not a universal condition of this occupation &mdash; <span className="font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</span> of {pluralize(targetOccupation)} are not stranded. Two within-occupation levers can move workers off that line without changing field: (1) scaling part-time hours up to full-time, and (2) advancing into higher-paying roles within the same occupational lane through promotion or job-switching.
+                                Stranded is not a universal condition of this occupation &mdash; <span className="font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</span> of {pluralize(targetOccupation)} are not stranded. {leverDescription}
                               </p>
                             </div>
 
@@ -1610,36 +1641,36 @@ const App = () => {
                               <div className="p-4 bg-white rounded-2xl border border-slate-100">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Non-Stranded Rate</p>
                                 <p className="text-lg md:text-xl font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</p>
-                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay & utilisation</p>
+                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay &amp; utilisation</p>
                               </div>
-                              <div className="p-4 bg-white rounded-2xl border border-slate-100">
+                              <div className={`p-4 rounded-2xl border ${HOURS_VIABLE ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`}>
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Full-Time Share</p>
                                 <p className="text-lg md:text-xl font-black text-blue-900">{(ftShare * 100).toFixed(1)}%</p>
-                                <p className="text-[9px] text-slate-400 mt-1">{(occupationDiagnostics.partTimeShare * 100).toFixed(1)}% are PT &mdash; hours scale-up is a viable lever</p>
+                                <p className="text-[9px] mt-1 text-slate-500">
+                                  {HOURS_VIABLE
+                                    ? <><span className="font-black text-amber-700">{(ptShare * 100).toFixed(1)}% PT</span> — hours scale-up is a real lever</>
+                                    : HOURS_PARTIAL
+                                      ? <>{(ptShare * 100).toFixed(1)}% PT — modest scale-up potential</>
+                                      : <>{(ptShare * 100).toFixed(1)}% PT — too few to make scale-up a meaningful lever</>}
+                                </p>
                               </div>
-                              <div className="p-4 bg-white rounded-2xl border border-slate-100 group relative">
+                              <div className={`p-4 rounded-2xl border group relative ${PROMO_STRONG ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'}`}>
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Internal Promotion (5yr)</p>
-                                <p className="text-lg md:text-xl font-black text-blue-900">{intP !== undefined && intP !== null ? `${(intP * 100).toFixed(1)}%` : '—'}</p>
-                                <p className="text-[9px] text-slate-400 mt-1">promoted by same employer within 5 yrs</p>
+                                <p className="text-lg md:text-xl font-black text-blue-900">{hasIntP ? `${(intP! * 100).toFixed(1)}%` : '—'}</p>
+                                <p className="text-[9px] text-slate-500 mt-1">promoted by same employer within 5 yrs</p>
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-56 text-center z-50 shadow-lg leading-relaxed">
                                   Share of workers in this occupation promoted to a higher-paying role at the same employer within 5 years (national).
                                 </div>
                               </div>
-                              <div className="p-4 bg-white rounded-2xl border border-slate-100 group relative">
+                              <div className={`p-4 rounded-2xl border group relative ${PROMO_STRONG ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'}`}>
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">External Job-Move (5yr)</p>
-                                <p className="text-lg md:text-xl font-black text-blue-900">{extP !== undefined && extP !== null ? `${(extP * 100).toFixed(1)}%` : '—'}</p>
-                                <p className="text-[9px] text-slate-400 mt-1">advanced via switching employer in 5 yrs</p>
+                                <p className="text-lg md:text-xl font-black text-blue-900">{hasExtP ? `${(extP! * 100).toFixed(1)}%` : '—'}</p>
+                                <p className="text-[9px] text-slate-500 mt-1">advanced via switching employer in 5 yrs</p>
                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-56 text-center z-50 shadow-lg leading-relaxed">
                                   Share of workers in this occupation who advanced to a higher-paying role by switching to a different employer within 5 years.
                                 </div>
                               </div>
                             </div>
-
-                            {hasPromo && (
-                              <p className="text-xs text-slate-500 italic">
-                                Roughly <span className="font-black text-blue-900">{(totalPromo * 100).toFixed(0)}%</span> of {pluralize(targetOccupation)} nationally see a meaningful advance within five years without leaving the occupation. Where that rate is high, in-role advancement is a credible alternative to a full pathway switch.
-                              </p>
-                            )}
                           </div>
                         );
                       })()}
