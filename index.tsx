@@ -594,8 +594,12 @@ const App = () => {
     };
   }, [filteredByScope, durationByScope]);
 
-  /** Age + education breakdowns for the selected cohort (geography x sector slice) */
+  /** Age + education breakdowns for the selected cohort (geography x sector slice).
+   *  Suppressed when the crosstab JSON shows zero workers for this slice, so
+   *  demographics don't contradict a "no workers in this selection" headline.  */
+  const sliceHasWorkers = stats.lw + stats.ue + stats.st > 0;
   const demoBreakdowns = useMemo(() => {
+    if (!sliceHasWorkers) return { age: [], education: [] } as { age: [string, number][]; education: [string, number][] };
     const key = `${geography}|${sector}`;
     const slice = demographics.data[key];
     if (!slice) return { age: [], education: [] } as { age: [string, number][]; education: [string, number][] };
@@ -612,12 +616,16 @@ const App = () => {
       .filter(e => eduMap[e] !== undefined)
       .map(e => [EDU_LABELS[e] || e, eduMap[e] || 0]);
     return { age, education };
-  }, [geography, sector, selectedCohort]);
+  }, [geography, sector, selectedCohort, sliceHasWorkers]);
 
-  // Auto-select top occupation when filters change
+  // Auto-select top occupation when filters change. Clear it when no workers in scope
+  // so Section 03 / Section 04 don't show stale data from the previous selection.
   useEffect(() => {
     if (cohortBreakdowns.occ.length > 0) {
       setTargetOccupation(cohortBreakdowns.occ[0][0]);
+    } else {
+      setTargetOccupation(null);
+      setSelectedDestination(null);
     }
   }, [sector, selectedCohort, geography, cohortBreakdowns.occ]);
 
@@ -1229,21 +1237,28 @@ const App = () => {
           </div>
 
           <div className="bg-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-sm border border-slate-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
-              {cohortBreakdowns.occ.slice(0, 10).map(([occ, val]) => (
-                <div key={occ} onClick={() => setTargetOccupation(occ)}
-                  className={`p-5 md:p-6 rounded-[24px] md:rounded-[32px] border-2 cursor-pointer transition-all duration-300 ${
-                    targetOccupation === occ ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300'}`}>
-                  <p className={`font-black uppercase tracking-tighter text-xs md:text-sm mb-3 md:mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
-                  <div className="flex justify-between items-center">
-                    <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
-                      {selectedCohort === 'All Stranded' ? 'Stranded Workers' : `${selectedCohort} Workers`}
-                    </span>
-                    <span className={`text-base md:text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{Math.round(val).toLocaleString()}</span>
+            {cohortBreakdowns.occ.length === 0 ? (
+              <div className="text-center py-8 md:py-10">
+                <p className="text-sm font-black text-slate-500 uppercase tracking-widest">No occupation data for this slice</p>
+                <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto">The crosstab does not contain workers for <span className="font-bold text-slate-600">{geography === 'All' ? 'Tennessee' : geography}</span> · <span className="font-bold text-slate-600">{sector}</span>. Pick a different geography or sector to continue.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
+                {cohortBreakdowns.occ.slice(0, 10).map(([occ, val]) => (
+                  <div key={occ} onClick={() => setTargetOccupation(occ)}
+                    className={`p-5 md:p-6 rounded-[24px] md:rounded-[32px] border-2 cursor-pointer transition-all duration-300 ${
+                      targetOccupation === occ ? 'bg-blue-900 border-blue-900 shadow-xl -translate-y-1' : 'bg-white border-slate-100 hover:border-blue-300'}`}>
+                    <p className={`font-black uppercase tracking-tighter text-xs md:text-sm mb-3 md:mb-4 truncate ${targetOccupation === occ ? 'text-blue-200' : 'text-slate-800'}`}>{occ}</p>
+                    <div className="flex justify-between items-center">
+                      <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${targetOccupation === occ ? 'text-blue-400' : 'text-slate-400'}`}>
+                        {selectedCohort === 'All Stranded' ? 'Stranded Workers' : `${selectedCohort} Workers`}
+                      </span>
+                      <span className={`text-base md:text-lg font-black ${targetOccupation === occ ? 'text-white' : 'text-blue-950'}`}>{Math.round(val).toLocaleString()}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Occupation Diagnostic Panel */}
             {targetOccupation && occupationDiagnostics && (

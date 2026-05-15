@@ -35,6 +35,20 @@ HERE = os.path.dirname(__file__)
 CSV_PATH = os.path.join(HERE, "src", "data", "cross_tabulated_data_cleaned_correct.csv")
 OUT_PATH = os.path.join(HERE, "src", "data", "demographics.json")
 
+# Normalize CSV values to match the app's crosstab JSON shape:
+# - The crosstab JSON uses the shorter NAICS sector label "Administrative and Support
+#   and Waste Management"; the cleaned CSV uses the full BLS label. Map to the JSON form.
+# - The crosstab JSON only carries "Other MSA"; the cleaned CSV has both "Rural" and
+#   "Other MSA". The TennesseeMap component normalizes Rural → Other MSA on the
+#   geography selector side, so we do the same here.
+SECTOR_REMAP = {
+    "Administrative and Support and Waste Management and Remediation Services":
+        "Administrative and Support and Waste Management",
+}
+MSA_REMAP = {
+    "Rural": "Other MSA",
+}
+
 
 def num(v):
     if v in (None, "", "NA"):
@@ -66,6 +80,8 @@ def main():
             sector = row.get("naics2_title")
             if not msa or not sector or sector in ("Other", "NA"):
                 continue
+            msa = MSA_REMAP.get(msa, msa)
+            sector = SECTOR_REMAP.get(sector, sector)
 
             age = row.get("age_group") or None
             edu = row.get("education_level") or None
