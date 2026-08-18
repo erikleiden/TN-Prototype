@@ -1,18 +1,38 @@
 """
-Convert new TN data files (April 2026) from xlsx/csv to JSON for the dashboard app.
+Convert refreshed TN data files from xlsx/csv to JSON for the dashboard app.
 
-New data source: C:/Users/eleid/Downloads/TN data 4.01/
+Usage:
+    python convert_new_data.py --data-dir /path/to/refreshed/files
+
+Expects these files in --data-dir (names must match the refresh delivery):
+    2026.03.31_stall_crosstab.csv
+    2026.03.31_stall_duration_hist_data.csv
+    national_trans_clean_top5.xlsx           (sheet "data")
+    occ_similarity_top5.xlsx                 (sheet "data")
+    app_skill_gaps_top5.xlsx
+    tennessee_posting_demand_by_occ_and_sector.xlsx
+        (sheets "occ", "occ_sector", "share_growth")
 
 Outputs JSON files into src/data/ matching the app's expected formats.
+Run build_demographics.py and build_overlap.py afterwards, then `npm run build`.
 """
 
+import argparse
 import json
 import csv
 import os
 import openpyxl
 
-DATA_DIR = r"C:\Users\eleid\Downloads\TN data 4.01"
-OUT_DIR = os.path.join(os.path.dirname(__file__), "src", "data")
+parser = argparse.ArgumentParser(description="Convert TN refresh files to app JSON.")
+parser.add_argument("--data-dir", required=True,
+                    help="Folder containing the refreshed CSV/XLSX delivery")
+args = parser.parse_args()
+
+DATA_DIR = args.data_dir
+OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
+
+if not os.path.isdir(DATA_DIR):
+    raise SystemExit(f"ERROR: --data-dir not found: {DATA_DIR}")
 
 
 def read_xlsx_data(filename, sheet_name="data"):
@@ -110,15 +130,12 @@ write_json(sim_out, "occ_similarity.json")
 
 
 # ============================================================================
-# 5. Skill Gaps (top5 and top20) → skill_gaps_top5.json, skill_gaps_top20.json
+# 5. Skill Gaps → skill_gaps_top5.json
+#    (top20 was superseded by cross_pathway_skills.json and is no longer built)
 # ============================================================================
 print("Converting skill gaps (top5)...")
 sg5 = read_xlsx_data("app_skill_gaps_top5.xlsx")
 write_json(sg5, "skill_gaps_top5.json")
-
-print("Converting skill gaps (top20)...")
-sg20 = read_xlsx_data("app_skill_gaps_top20.xlsx")
-write_json(sg20, "skill_gaps_top20.json")
 
 
 # ============================================================================

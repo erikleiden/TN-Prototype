@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Inter is bundled locally via @fontsource/inter (imported in index.tsx) —
+   no external font host is contacted at runtime. */
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+/* Tennessee map region styling (moved from the old index.html inline block) */
+.region-path {
+  transition: fill 0.2s;
+  cursor: pointer;
+}
+.region-path:hover {
+  fill: #1d4ed8 !important;
+}
+.selected-region {
+  fill: #1e3a8a !important;
+  stroke: #fbbf24;
+  stroke-width: 2px;
+}

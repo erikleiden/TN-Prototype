@@ -4,8 +4,11 @@ A policy dashboard for analyzing workforce stratification in Tennessee. Identifi
 "stranded workers" — low-wage, underemployed and career-stalled — and provides
 career pathway analysis with skill gap and credential data.
 
-Static single-page app: React + TypeScript, bundled by Vite. There is no backend
-and no database; all data is compiled into the bundle at build time.
+Static single-page app: React + TypeScript, Tailwind CSS, bundled by Vite. There
+is no backend and no database; all data is compiled into the bundle at build
+time, and the fonts are bundled locally — **the deployed site makes no external
+network requests**, so it can be hosted on any static web server, including on a
+fully internal or air-gapped network.
 
 ## Run locally
 
@@ -25,17 +28,14 @@ XLSX) by the Python scripts in the repository root. Requires Python 3 and
 `openpyxl`.
 
 ```
-python convert_new_data.py
+python convert_new_data.py --data-dir /path/to/refreshed/files
 python build_demographics.py
 python build_overlap.py
 npm run build
 ```
 
-Then redeploy the contents of `dist/`.
-
-Note: `convert_new_data.py` currently hard-codes its source folder in the
-`DATA_DIR` constant at the top of the file, and must be edited before it will run
-on another machine. `build_overlap.py` takes `--csv` and `--out` instead.
+Then redeploy the contents of `dist/`. The expected source file names are listed
+in the docstring at the top of `convert_new_data.py`.
 
 `build_overlap.py` must run after any refresh of
 `cross_tabulated_data_cleaned_correct.csv`. It derives the Low Wage ×

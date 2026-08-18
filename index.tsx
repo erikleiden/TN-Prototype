@@ -8,7 +8,7 @@
  * Data sources:
  *   - cross_tabulated_data.json: Worker microdata by occupation/industry/demographics
  *   - lw_ue_overlap.json: Low Wage x Underemployed intersection rates (de-duplication)
- *   - stalled_workers.csv: Tenure-based stalled worker analysis
+ *   - stall_duration.json: Tenure histogram for career-stalled workers
  *   - occ_similarity.json: O*NET skill-similarity between occupation pairs
  *   - national_transitions.json: Observed occupational transitions (national + TN)
  *   - skill_gaps_top5.json: Skill gaps for top-5 destination occupations
@@ -27,9 +27,18 @@ import { createRoot } from 'react-dom/client';
 import {
   MapPin, Briefcase, Target, Download, Users, GraduationCap,
   ArrowRight, ChevronDown, LayoutDashboard, BarChart3, Layers,
-  FileText, TrendingUp, Map as MapIcon, Flame, Activity
+  FileText, TrendingUp, Flame, Activity
 } from 'lucide-react';
 import TennesseeMap from './src/components/TennesseeMap';
+
+// Compiled Tailwind + custom styles, and the Inter typeface bundled locally.
+// The deployed site makes no external network requests.
+import './src/index.css';
+import '@fontsource/inter/300.css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
 
 // --- Static data imports (bundled at build time by Vite) ---
 import crossTabulatedRaw from './src/data/cross_tabulated_data.json';
@@ -182,8 +191,11 @@ interface CredentialEntry {
 // DATA SETUP
 // ============================================================================
 
-const crossTabulatedData = crossTabulatedRaw as DataRow[];
-const stallDuration = stallDurationRaw as StallDurationRow[];
+// The JSON carries naics2/SOC codes as mixed number|string; the app only ever
+// filters on the *_title / *_NAME string fields, so the interfaces type the code
+// fields as they're used. Route through `unknown` to acknowledge the mismatch.
+const crossTabulatedData = crossTabulatedRaw as unknown as DataRow[];
+const stallDuration = stallDurationRaw as unknown as StallDurationRow[];
 const occSimilarity = occSimilarityRaw as PathwayRow[];
 const nationalTransitions = nationalTransitionsRaw as PathwayRow[];
 const skillGapsTop5 = skillGapsTop5Raw as SkillGapRow[];
@@ -568,7 +580,7 @@ const AIBadge: React.FC<{ auto?: number | null; aug?: number | null; impactPct?:
 const REPORT_GEO_CONTEXT: Record<string, string> = {
   'Nashville': 'Nashville consistently posts the lowest strandedness rates in the state — 16.5% low-wage versus 5–8pp higher elsewhere — driven by a deeper professional-tier employer base. The local lesson: where you work and where you live shape the chances of getting ahead at least as much as how hard you work or how much education you have.',
   'Memphis': 'Memphis carries a structural mismatch on returns to education: master\'s-degree holders here have more than double the underemployment rate of their Nashville counterparts (13.4% vs 5.5%) — the single largest intra-credential gap in the data. The city produces or attracts graduate-credentialled workers but does not generate enough roles that require and reward those credentials. Younger workers feel this most acutely: 37.7% of Memphis 25–34-year-olds are stranded, against 27.2% in Nashville.',
-  'Knoxville': 'Knoxville\'s wage strandedness is concentrated in specific sectors rather than spread evenly across the labour market. Accommodation and food services posts a 70.6% low-wage rate locally — the single highest sector-MSA combination in the dataset, 22pp above Memphis and 32pp above Nashville for the same sector. Utilities also shows an anomalous 10.9% underemployment rate against a 2.7% state norm, hinting at over-qualified workers absorbed into available technical roles for lack of alternatives.',
+  'Knoxville': 'Knoxville\'s wage strandedness is concentrated in specific sectors rather than spread evenly across the labor market. Accommodation and food services posts a 70.6% low-wage rate locally — the single highest sector-MSA combination in the dataset, 22pp above Memphis and 32pp above Nashville for the same sector. Utilities also shows an anomalous 10.9% underemployment rate against a 2.7% state norm, hinting at over-qualified workers absorbed into available technical roles for lack of alternatives.',
   'Chattanooga': 'Strandedness in Chattanooga is driven primarily by wage levels rather than qualification mismatch — underemployment sits at or below state norms in most sectors. Workers without a high-school diploma face an especially severe wage burden: 47.7% are low-wage in Chattanooga, against 36.7% in Nashville, reflecting limited entry-level progression infrastructure.',
   'Other MSA': 'Rural Tennessee and smaller MSAs carry the heaviest low-wage burden in the state. College-degree holders here face strandedness rates well above the urban average — not because they are overqualified in the abstract, but because their local economies simply do not generate enough roles that match what they can do. 27.4% of rural bachelor\'s-degree holders are stranded overall, 7pp above Nashville.',
   'All': 'Roughly one in four working Tennesseans is stranded. Geographic variation is one of the most striking findings in the report — Nashville sits notably below the rest of the state on low-wage strandedness, while Memphis, Knoxville, Chattanooga, and rural areas each show a distinct profile of where the problem concentrates.',
@@ -902,8 +914,9 @@ const App = () => {
 
     const reportHtml = `<!doctype html><html><head><meta charset="utf-8"/><title>Executive Brief: Stranded Talent — ${esc(geoLabel)} · ${esc(sector)}</title>
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
-        * { box-sizing: border-box; } body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        /* No external font host — the brief prints in Inter when installed locally,
+           otherwise in the system UI face. */
+        * { box-sizing: border-box; } body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .page { padding: 50px 60px 80px 60px; min-height: 100vh; page-break-after: always; position: relative; }
         .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 26px; display: flex; justify-content: space-between; align-items: flex-end; }
         .header h1 { margin: 0; text-transform: uppercase; font-size: 22px; color: #1e3a8a; font-weight: 900; letter-spacing: -0.025em; line-height: 1.1; }
@@ -946,7 +959,7 @@ const App = () => {
 
         <h2>What this slice looks like</h2>
         <p class="narrative">
-          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled${stats.overlap > 0 ? `, less ${stats.overlap.toLocaleString()} counted under both the low-wage and underemployed definitions` : ''}. Each worker is counted once. Of those, roughly <strong>${highRiskShare}% sit in occupations where BGI projects ≥5% employer-demand decline over the next five years</strong> — the report's "double-jeopardy" population, currently stranded and in roles where AI-driven adoption is on track to materially reduce demand for the worker's labour.
+          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled${stats.overlap > 0 ? `, less ${stats.overlap.toLocaleString()} counted under both the low-wage and underemployed definitions` : ''}. Each worker is counted once. Of those, roughly <strong>${highRiskShare}% sit in occupations where BGI projects ≥5% employer-demand decline over the next five years</strong> — the report's "double-jeopardy" population, currently stranded and in roles where AI-driven adoption is on track to materially reduce demand for the worker's labor.
         </p>
 
         ${geoContext ? `<p class="narrative"><strong style="color: #1e3a8a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em;">${esc(geography === 'All' ? 'Statewide context' : geography + ' context')}</strong><span class="quote">${esc(geoContext)}</span></p>` : ''}
@@ -1034,8 +1047,8 @@ const App = () => {
 
         <h2 style="margin-top: 22px;">Strategic implications</h2>
         <ul class="recs-list">
-          ${strandedPct >= 25 ? `<li><strong>Sector triage.</strong> ${esc(sector)} in ${esc(geoLabel)} runs above the statewide ~25% strandedness baseline. Prioritise this intersection for credential-pathway investment.</li>` : `<li><strong>Below-baseline slice.</strong> ${esc(sector)} in ${esc(geoLabel)} sits at ${strandedPct.toFixed(0)}% strandedness, below the statewide baseline — interventions should focus on the specific stranded subpopulations identified on page 2 rather than blanket sector treatments.</li>`}
-          ${highRiskShare >= 30 ? `<li><strong>Double-jeopardy concentration.</strong> ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — meaning automation outweighs augmentation by 10+ percentage points. Pathway choices that route into low-risk destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable displacement risk.</strong> Only ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — most face AI as a tool that augments rather than replaces. Strandedness here is more a pay/utilisation question than an AI-disruption question.</li>`}
+          ${strandedPct >= 25 ? `<li><strong>Sector triage.</strong> ${esc(sector)} in ${esc(geoLabel)} runs above the statewide ~25% strandedness baseline. Prioritize this intersection for credential-pathway investment.</li>` : `<li><strong>Below-baseline slice.</strong> ${esc(sector)} in ${esc(geoLabel)} sits at ${strandedPct.toFixed(0)}% strandedness, below the statewide baseline — interventions should focus on the specific stranded subpopulations identified on page 2 rather than blanket sector treatments.</li>`}
+          ${highRiskShare >= 30 ? `<li><strong>Double-jeopardy concentration.</strong> ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — meaning automation outweighs augmentation by 10+ percentage points. Pathway choices that route into low-risk destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable displacement risk.</strong> Only ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — most face AI as a tool that augments rather than replaces. Strandedness here is more a pay/utilization question than an AI-disruption question.</li>`}
           <li><strong>Pathway architecture.</strong> The report identifies seven destranding pathway types. For this slice, the most relevant typically include the Healthcare Ladder (highest wage gain, lowest AI exposure), Professional & Financial Services (highest strandedness reduction), and Project & Operations Management (most credential-accessible, sector-agnostic).</li>
           <li><strong>Within-occupation lever.</strong> Promotion-rate and full-time-share data on page 2 indicate that, for some occupations, scaling part-time hours up to full-time and supporting internal promotion are credible alternatives to a full pathway switch. These are lower-cost interventions.</li>
         </ul>
@@ -1802,7 +1815,7 @@ const App = () => {
                               <div className="p-4 bg-white rounded-2xl border border-slate-100">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Non-Stranded Rate</p>
                                 <p className="text-lg md:text-xl font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</p>
-                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay &amp; utilisation</p>
+                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay &amp; utilization</p>
                               </div>
                               <div className={`p-4 rounded-2xl border ${HOURS_VIABLE ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`}>
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Full-Time Share</p>
