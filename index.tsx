@@ -7,7 +7,8 @@
  *
  * Data sources:
  *   - cross_tabulated_data.json: Worker microdata by occupation/industry/demographics
- *   - stalled_workers.csv: Tenure-based stalled worker analysis
+ *   - lw_ue_overlap.json: Low Wage x Underemployed intersection rates (de-duplication)
+ *   - stall_duration.json: Tenure histogram for career-stalled workers
  *   - occ_similarity.json: O*NET skill-similarity between occupation pairs
  *   - national_transitions.json: Observed occupational transitions (national + TN)
  *   - skill_gaps_top5.json: Skill gaps for top-5 destination occupations
@@ -26,9 +27,18 @@ import { createRoot } from 'react-dom/client';
 import {
   MapPin, Briefcase, Target, Download, Users, GraduationCap,
   ArrowRight, ChevronDown, LayoutDashboard, BarChart3, Layers,
-  FileText, TrendingUp, Map as MapIcon, Flame, Activity
+  FileText, TrendingUp, Flame, Activity
 } from 'lucide-react';
 import TennesseeMap from './src/components/TennesseeMap';
+
+// Compiled Tailwind + custom styles, and the Inter typeface bundled locally.
+// The deployed site makes no external network requests.
+import './src/index.css';
+import '@fontsource/inter/300.css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
 
 // --- Static data imports (bundled at build time by Vite) ---
 import crossTabulatedRaw from './src/data/cross_tabulated_data.json';
@@ -41,6 +51,7 @@ import postingDemandRaw from './src/data/posting_demand.json';
 import tnLicensesRaw from './src/data/tn_licenses.json';
 import commonCredsRaw from './src/data/common_credentials.json';
 import demographicsRaw from './src/data/demographics.json';
+import lwUeOverlapRaw from './src/data/lw_ue_overlap.json';
 
 // ============================================================================
 // TYPES
@@ -180,8 +191,11 @@ interface CredentialEntry {
 // DATA SETUP
 // ============================================================================
 
-const crossTabulatedData = crossTabulatedRaw as DataRow[];
-const stallDuration = stallDurationRaw as StallDurationRow[];
+// The JSON carries naics2/SOC codes as mixed number|string; the app only ever
+// filters on the *_title / *_NAME string fields, so the interfaces type the code
+// fields as they're used. Route through `unknown` to acknowledge the mismatch.
+const crossTabulatedData = crossTabulatedRaw as unknown as DataRow[];
+const stallDuration = stallDurationRaw as unknown as StallDurationRow[];
 const occSimilarity = occSimilarityRaw as PathwayRow[];
 const nationalTransitions = nationalTransitionsRaw as PathwayRow[];
 const skillGapsTop5 = skillGapsTop5Raw as SkillGapRow[];
@@ -205,6 +219,40 @@ const demographics = demographicsRaw as DemographicsPayload;
 const EDU_LABELS = demographics.edu_labels;
 const EDU_ORDER = ['1', '2', '3', '4', '5', '6', '7'];
 const AGE_ORDER = ['25-34', '35-44', '45-54', '55-64'];
+
+/** Low Wage x Underemployed intersection rates, built by build_overlap.py.
+ *
+ *  The three cohorts are NOT fully mutually exclusive. `estimated_stalled_only`
+ *  already nets Career Stalled against the other two, so that category never
+ *  double-counted. But Low Wage and Underemployed can both bind on the same
+ *  worker — someone earning below $30,493 who is also over-credentialled for
+ *  their role — and the crosstab carries no intersection column for that pair.
+ *
+ *  build_overlap.py derives the missing term from the ACS-weighted microdata
+ *  (where n_stranded_weighted IS the de-duplicated union) and emits it as a rate
+ *  relative to (low_wage + underemployed), at three levels of granularity.
+ *  See that script's docstring for the derivation and its assumptions. */
+interface OverlapPayload {
+  meta: Record<string, unknown>;
+  occ: Record<string, number>;
+  sector: Record<string, number>;
+  msa: Record<string, number>;
+  overall: number;
+}
+const lwUeOverlap = lwUeOverlapRaw as OverlapPayload;
+
+/** Estimated Low Wage n Underemployed headcount for a single crosstab row.
+ *  Falls back occupation -> sector -> MSA -> statewide as slices thin out. */
+const rowOverlap = (d: DataRow): number => {
+  const both = d.estimated_low_wage + d.estimated_underemployed;
+  if (both <= 0) return 0;
+  const rate =
+    lwUeOverlap.occ[`${d.msa_category}|${d.naics2_title}|${d.SOC_2019_5_ACS_NAME}`]
+    ?? lwUeOverlap.sector[`${d.msa_category}|${d.naics2_title}`]
+    ?? lwUeOverlap.msa[d.msa_category]
+    ?? lwUeOverlap.overall;
+  return both * rate;
+};
 
 // Build lookup maps for fast access
 const demandByOcc = new Map(postingDemand.occ.map(r => [r.SOC_2019_5_ACS_NAME, r]));
@@ -532,7 +580,7 @@ const AIBadge: React.FC<{ auto?: number | null; aug?: number | null; impactPct?:
 const REPORT_GEO_CONTEXT: Record<string, string> = {
   'Nashville': 'Nashville consistently posts the lowest strandedness rates in the state — 16.5% low-wage versus 5–8pp higher elsewhere — driven by a deeper professional-tier employer base. The local lesson: where you work and where you live shape the chances of getting ahead at least as much as how hard you work or how much education you have.',
   'Memphis': 'Memphis carries a structural mismatch on returns to education: master\'s-degree holders here have more than double the underemployment rate of their Nashville counterparts (13.4% vs 5.5%) — the single largest intra-credential gap in the data. The city produces or attracts graduate-credentialled workers but does not generate enough roles that require and reward those credentials. Younger workers feel this most acutely: 37.7% of Memphis 25–34-year-olds are stranded, against 27.2% in Nashville.',
-  'Knoxville': 'Knoxville\'s wage strandedness is concentrated in specific sectors rather than spread evenly across the labour market. Accommodation and food services posts a 70.6% low-wage rate locally — the single highest sector-MSA combination in the dataset, 22pp above Memphis and 32pp above Nashville for the same sector. Utilities also shows an anomalous 10.9% underemployment rate against a 2.7% state norm, hinting at over-qualified workers absorbed into available technical roles for lack of alternatives.',
+  'Knoxville': 'Knoxville\'s wage strandedness is concentrated in specific sectors rather than spread evenly across the labor market. Accommodation and food services posts a 70.6% low-wage rate locally — the single highest sector-MSA combination in the dataset, 22pp above Memphis and 32pp above Nashville for the same sector. Utilities also shows an anomalous 10.9% underemployment rate against a 2.7% state norm, hinting at over-qualified workers absorbed into available technical roles for lack of alternatives.',
   'Chattanooga': 'Strandedness in Chattanooga is driven primarily by wage levels rather than qualification mismatch — underemployment sits at or below state norms in most sectors. Workers without a high-school diploma face an especially severe wage burden: 47.7% are low-wage in Chattanooga, against 36.7% in Nashville, reflecting limited entry-level progression infrastructure.',
   'Other MSA': 'Rural Tennessee and smaller MSAs carry the heaviest low-wage burden in the state. College-degree holders here face strandedness rates well above the urban average — not because they are overqualified in the abstract, but because their local economies simply do not generate enough roles that match what they can do. 27.4% of rural bachelor\'s-degree holders are stranded overall, 7pp above Nashville.',
   'All': 'Roughly one in four working Tennesseans is stranded. Geographic variation is one of the most striking findings in the report — Nashville sits notably below the rest of the state on low-wage strandedness, while Memphis, Knoxville, Chattanooga, and rural areas each show a distinct profile of where the problem concentrates.',
@@ -597,16 +645,37 @@ const App = () => {
     ),
   [geography, sector]);
 
-  /** Aggregate stats: total employment, low-wage, underemployed, stalled worker counts */
+  /** Aggregate stats for the current geography x sector slice.
+   *
+   *  `lw` / `ue` / `st` are category memberships — a worker can appear in both
+   *  `lw` and `ue`, so they do NOT sum to the stranded population. `overlap` is
+   *  the estimated Low Wage n Underemployed intersection and `stranded` is the
+   *  de-duplicated union:
+   *
+   *      stranded = lw + ue + st - overlap
+   *
+   *  This matches the published report's definition (its statewide ~452,000 is a
+   *  de-duplicated union). Always use `stranded` for headline counts and rates. */
   const stats = useMemo(() => {
-    let total = 0, lw = 0, ue = 0, st = 0;
+    let total = 0, lw = 0, ue = 0, st = 0, overlap = 0;
     filteredByScope.forEach(d => {
       total += d.oews_calibrated_employment;
       lw += d.estimated_low_wage;
       ue += d.estimated_underemployed;
       st += d.estimated_stalled_only;
+      overlap += rowOverlap(d);
     });
-    return { total: Math.round(total), lw: Math.round(lw), ue: Math.round(ue), st: Math.round(st) };
+    // Round the union from unrounded parts so the displayed reconciliation
+    // (lw + ue + st - overlap) is internally consistent to the worker.
+    const ov = Math.round(overlap);
+    return {
+      total: Math.round(total),
+      lw: Math.round(lw),
+      ue: Math.round(ue),
+      st: Math.round(st),
+      overlap: ov,
+      stranded: Math.max(Math.round(lw) + Math.round(ue) + Math.round(st) - ov, 0),
+    };
   }, [filteredByScope]);
 
   /** Occupational breakdowns for the selected cohort */
@@ -618,8 +687,11 @@ const App = () => {
       if (selectedCohort === 'Low Wage') weight = d.estimated_low_wage;
       else if (selectedCohort === 'Underemployed') weight = d.estimated_underemployed;
       else if (selectedCohort === 'Stalled') weight = d.estimated_stalled_only;
-      else weight = d.estimated_low_wage + d.estimated_underemployed + d.estimated_stalled_only;
-      occ[d.SOC_2019_5_ACS_NAME] = (occ[d.SOC_2019_5_ACS_NAME] || 0) + weight;
+      // 'All Stranded' is the de-duplicated union, so the occupational mix has to
+      // net out the Low Wage n Underemployed intersection the same way the
+      // headline does — otherwise the bars sum past the stranded total.
+      else weight = d.estimated_low_wage + d.estimated_underemployed + d.estimated_stalled_only - rowOverlap(d);
+      occ[d.SOC_2019_5_ACS_NAME] = (occ[d.SOC_2019_5_ACS_NAME] || 0) + Math.max(weight, 0);
     });
 
     return {
@@ -650,7 +722,7 @@ const App = () => {
   /** Age + education breakdowns for the selected cohort (geography x sector slice).
    *  Suppressed when the crosstab JSON shows zero workers for this slice, so
    *  demographics don't contradict a "no workers in this selection" headline.  */
-  const sliceHasWorkers = stats.lw + stats.ue + stats.st > 0;
+  const sliceHasWorkers = stats.stranded > 0;
   const demoBreakdowns = useMemo(() => {
     if (!sliceHasWorkers) return { age: [], education: [] } as { age: [string, number][]; education: [string, number][] };
     const key = `${geography}|${sector}`;
@@ -802,7 +874,7 @@ const App = () => {
       </div>`;
 
     const maxOcc = Math.max(...cohortBreakdowns.occ.map(x => x[1]), 1);
-    const totalStranded = stats.lw + stats.ue + stats.st;
+    const totalStranded = stats.stranded;
     const strandedPct = stats.total > 0 ? (totalStranded / stats.total) * 100 : 0;
 
     const geoLabel = geography === 'All' ? 'Tennessee (statewide)' : geography === 'Other MSA' ? 'Other / Rural TN' : `${geography} MSA`;
@@ -842,8 +914,9 @@ const App = () => {
 
     const reportHtml = `<!doctype html><html><head><meta charset="utf-8"/><title>Executive Brief: Stranded Talent — ${esc(geoLabel)} · ${esc(sector)}</title>
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
-        * { box-sizing: border-box; } body { font-family: 'Inter', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        /* No external font host — the brief prints in Inter when installed locally,
+           otherwise in the system UI face. */
+        * { box-sizing: border-box; } body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .page { padding: 50px 60px 80px 60px; min-height: 100vh; page-break-after: always; position: relative; }
         .header { border-bottom: 4px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 26px; display: flex; justify-content: space-between; align-items: flex-end; }
         .header h1 { margin: 0; text-transform: uppercase; font-size: 22px; color: #1e3a8a; font-weight: 900; letter-spacing: -0.025em; line-height: 1.1; }
@@ -886,7 +959,7 @@ const App = () => {
 
         <h2>What this slice looks like</h2>
         <p class="narrative">
-          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled. Of those, roughly <strong>${highRiskShare}% sit in occupations where BGI projects ≥5% employer-demand decline over the next five years</strong> — the report's "double-jeopardy" population, currently stranded and in roles where AI-driven adoption is on track to materially reduce demand for the worker's labour.
+          Across ${esc(geoLabel)}'s ${esc(sector)} sector, <strong>${totalStranded.toLocaleString()} workers</strong> (${strandedPct.toFixed(1)}% of the local sector workforce) meet at least one stranded-talent definition: ${stats.lw.toLocaleString()} low-wage, ${stats.ue.toLocaleString()} underemployed, and ${Math.round(stats.st).toLocaleString()} career-stalled${stats.overlap > 0 ? `, less ${stats.overlap.toLocaleString()} counted under both the low-wage and underemployed definitions` : ''}. Each worker is counted once. Of those, roughly <strong>${highRiskShare}% sit in occupations where BGI projects ≥5% employer-demand decline over the next five years</strong> — the report's "double-jeopardy" population, currently stranded and in roles where AI-driven adoption is on track to materially reduce demand for the worker's labor.
         </p>
 
         ${geoContext ? `<p class="narrative"><strong style="color: #1e3a8a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em;">${esc(geography === 'All' ? 'Statewide context' : geography + ' context')}</strong><span class="quote">${esc(geoContext)}</span></p>` : ''}
@@ -974,8 +1047,8 @@ const App = () => {
 
         <h2 style="margin-top: 22px;">Strategic implications</h2>
         <ul class="recs-list">
-          ${strandedPct >= 25 ? `<li><strong>Sector triage.</strong> ${esc(sector)} in ${esc(geoLabel)} runs above the statewide ~25% strandedness baseline. Prioritise this intersection for credential-pathway investment.</li>` : `<li><strong>Below-baseline slice.</strong> ${esc(sector)} in ${esc(geoLabel)} sits at ${strandedPct.toFixed(0)}% strandedness, below the statewide baseline — interventions should focus on the specific stranded subpopulations identified on page 2 rather than blanket sector treatments.</li>`}
-          ${highRiskShare >= 30 ? `<li><strong>Double-jeopardy concentration.</strong> ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — meaning automation outweighs augmentation by 10+ percentage points. Pathway choices that route into low-risk destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable displacement risk.</strong> Only ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — most face AI as a tool that augments rather than replaces. Strandedness here is more a pay/utilisation question than an AI-disruption question.</li>`}
+          ${strandedPct >= 25 ? `<li><strong>Sector triage.</strong> ${esc(sector)} in ${esc(geoLabel)} runs above the statewide ~25% strandedness baseline. Prioritize this intersection for credential-pathway investment.</li>` : `<li><strong>Below-baseline slice.</strong> ${esc(sector)} in ${esc(geoLabel)} sits at ${strandedPct.toFixed(0)}% strandedness, below the statewide baseline — interventions should focus on the specific stranded subpopulations identified on page 2 rather than blanket sector treatments.</li>`}
+          ${highRiskShare >= 30 ? `<li><strong>Double-jeopardy concentration.</strong> ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — meaning automation outweighs augmentation by 10+ percentage points. Pathway choices that route into low-risk destinations (healthcare ladder, professional/financial services) compound returns: immediate strandedness relief plus durable insulation from disruption.</li>` : `<li><strong>Manageable displacement risk.</strong> Only ${highRiskShare}% of stranded workers in this slice sit in high net displacement-risk occupations — most face AI as a tool that augments rather than replaces. Strandedness here is more a pay/utilization question than an AI-disruption question.</li>`}
           <li><strong>Pathway architecture.</strong> The report identifies seven destranding pathway types. For this slice, the most relevant typically include the Healthcare Ladder (highest wage gain, lowest AI exposure), Professional & Financial Services (highest strandedness reduction), and Project & Operations Management (most credential-accessible, sector-agnostic).</li>
           <li><strong>Within-occupation lever.</strong> Promotion-rate and full-time-share data on page 2 indicate that, for some occupations, scaling part-time hours up to full-time and supporting internal promotion are credible alternatives to a full pathway switch. These are lower-cost interventions.</li>
         </ul>
@@ -994,26 +1067,39 @@ const App = () => {
   // RENDER
   // ============================================================================
 
-  // Treemap layout computation for Section 02
-  const treemapTotal = stats.lw + stats.ue + stats.st;
-  const treemapItems: { key: CohortType; label: string; value: number; pct: number; color: string; selectedColor: string; textColor: string; tooltip: string }[] = [
+  // Cohort cards for Section 02.
+  //
+  // `value` is a category membership count, and `pct` is that category's share of
+  // the de-duplicated stranded population — so the three percentages sum to more
+  // than 100% wherever Low Wage and Underemployed overlap. That is the honest
+  // presentation: the reconciliation strip under the cards shows the arithmetic,
+  // and each tooltip states where the category sits in the counting hierarchy.
+  const treemapTotal = stats.stranded;
+  const OVERLAP_NOTE = 'Overlaps with Underemployed — a worker can meet both definitions and is counted once in the stranded total.';
+  const treemapItems: { key: CohortType; label: string; value: number; pct: number; color: string; selectedColor: string; textColor: string; tooltip: string; rank: string }[] = [
     {
       key: 'Low Wage', label: 'Low Wage', value: stats.lw,
       pct: treemapTotal > 0 ? (stats.lw / treemapTotal) * 100 : 33,
       color: 'bg-blue-100 border-blue-200', selectedColor: 'bg-blue-600 border-blue-700',
-      textColor: 'text-blue-900', tooltip: 'Workers earning annual wages below $30,493 (two-thirds of MIT Living Wage for Tennessee). These workers struggle to meet basic living expenses despite being employed.'
+      textColor: 'text-blue-900',
+      rank: 'Overlapping category',
+      tooltip: 'Workers earning annual wages below $30,493 (two-thirds of MIT Living Wage for Tennessee). These workers struggle to meet basic living expenses despite being employed. ' + OVERLAP_NOTE
     },
     {
       key: 'Underemployed', label: 'Underemployed', value: stats.ue,
       pct: treemapTotal > 0 ? (stats.ue / treemapTotal) * 100 : 33,
       color: 'bg-amber-100 border-amber-200', selectedColor: 'bg-amber-500 border-amber-600',
-      textColor: 'text-amber-900', tooltip: 'Workers whose education exceeds their job requirements by 2+ levels (Associate\'s or below) or 1+ level (Bachelor\'s or above), AND earning $45,739 or less annually.'
+      textColor: 'text-amber-900',
+      rank: 'Overlapping category',
+      tooltip: 'Workers whose education exceeds their job requirements by 2+ levels (Associate\'s or below) or 1+ level (Bachelor\'s or above), AND earning $45,739 or less annually. Overlaps with Low Wage — a worker can meet both definitions and is counted once in the stranded total.'
     },
     {
       key: 'Stalled', label: 'Career Stalled', value: Math.round(stats.st),
       pct: treemapTotal > 0 ? (stats.st / treemapTotal) * 100 : 34,
       color: 'bg-emerald-100 border-emerald-200', selectedColor: 'bg-emerald-500 border-emerald-600',
-      textColor: 'text-emerald-900', tooltip: 'Workers who have remained in the same low-wage job for 3+ years without meaningful wage progression. Economically stuck — employed but unable to advance.'
+      textColor: 'text-emerald-900',
+      rank: 'Shown net of the other two',
+      tooltip: 'Workers who have remained in the same low-wage job for 3+ years without meaningful wage progression. Economically stuck — employed but unable to advance. Shown net: workers who are also low-wage or underemployed are counted under those categories, not here.'
     },
   ];
 
@@ -1093,7 +1179,8 @@ const App = () => {
                 </div>
                 <div className="lg:col-span-3 p-5 bg-amber-500 rounded-[20px] text-blue-950 flex flex-col justify-center">
                   <p className="text-[10px] font-black text-blue-950/40 uppercase tracking-widest mb-1">Stranded Rate</p>
-                  <p className="text-2xl md:text-3xl font-black">{stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(0) : 0}%</p>
+                  <p className="text-2xl md:text-3xl font-black">{stats.total > 0 ? ((stats.stranded / stats.total) * 100).toFixed(1) : 0}%</p>
+                  <p className="text-[9px] font-bold text-blue-950/50 mt-0.5 tabular-nums">{stats.stranded.toLocaleString()} workers, each counted once</p>
                 </div>
               </div>
             </div>
@@ -1108,7 +1195,7 @@ const App = () => {
             <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs md:text-sm shadow-inner flex-shrink-0">02</div>
             <div>
               <h2 className="text-base md:text-xl font-black text-slate-800 uppercase tracking-tight leading-none">The Stranded Landscape</h2>
-              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Mutually Exclusive Cohort Identification</p>
+              <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 md:mt-2">Cohort Identification · Each Worker Counted Once</p>
             </div>
           </div>
 
@@ -1118,11 +1205,31 @@ const App = () => {
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <BarChart3 size={12} className="text-blue-500" /> Stranded Worker Cohorts
               </h4>
-              <button onClick={() => setSelectedCohort('All Stranded')}
-                className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full transition-all ${
-                  selectedCohort === 'All Stranded' ? 'bg-blue-900 text-white shadow' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>
-                All ({Math.round(treemapTotal).toLocaleString()})
-              </button>
+              <div className="relative group/all">
+                <button onClick={() => setSelectedCohort('All Stranded')}
+                  className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full transition-all ${
+                    selectedCohort === 'All Stranded' ? 'bg-blue-900 text-white shadow' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>
+                  All ({Math.round(treemapTotal).toLocaleString()})
+                </button>
+                {/* Hierarchy tooltip — explains how the three categories combine */}
+                <div className="invisible group-hover/all:visible absolute z-50 w-80 p-3.5 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 top-full mt-2 right-0 pointer-events-none text-left">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1.5">How the categories combine</div>
+                  <div className="text-xs leading-relaxed mb-2.5">
+                    The three categories are not mutually exclusive. <strong className="text-blue-300">Low Wage</strong> and{' '}
+                    <strong className="text-amber-300">Underemployed</strong> can both apply to the same worker — someone paid
+                    below a living wage who is also over-credentialled for their role.{' '}
+                    <strong className="text-emerald-300">Career Stalled</strong> is shown net of the other two.
+                  </div>
+                  <div className="text-xs leading-relaxed mb-2.5">
+                    The stranded total counts each worker <strong>once</strong>, so it is smaller than the three
+                    categories added together. This matches the definition used in the published report.
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-t border-slate-700 pt-2">
+                    Low Wage + Underemployed + Career Stalled − Both = Stranded
+                  </div>
+                  <div className="absolute -top-2 right-6 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-b-8 border-b-slate-900" />
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
@@ -1155,7 +1262,7 @@ const App = () => {
 
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">{item.label}</span>
-                        <span className="text-[10px] font-bold text-slate-400">{item.pct.toFixed(0)}%</span>
+                        <span className="text-[10px] font-bold text-slate-400">{item.pct.toFixed(0)}% of stranded</span>
                       </div>
                       <div className="flex items-baseline justify-between mb-2">
                         <span className="text-xl md:text-2xl font-black text-slate-800 tabular-nums">{Math.round(item.value).toLocaleString()}</span>
@@ -1164,9 +1271,12 @@ const App = () => {
                         <div className={`h-full rounded-full transition-all duration-700 ${barFill[item.label]}`} style={{ width: `${barWidth}%` }} />
                       </div>
 
-                      {/* Tooltip */}
-                      <div className="invisible group-hover:visible absolute z-50 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
-                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 mb-1">{item.label}</div>
+                      {/* Tooltip — definition plus where this category sits in the counting hierarchy */}
+                      <div className="invisible group-hover:visible absolute z-50 w-72 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700 bottom-full mb-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                        <div className="flex items-baseline justify-between gap-2 mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">{item.label}</span>
+                          <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{item.rank}</span>
+                        </div>
                         <div className="text-xs leading-relaxed">{item.tooltip}</div>
                         <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-slate-900" />
                       </div>
@@ -1175,11 +1285,30 @@ const App = () => {
                 });
               })()}
             </div>
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Share of sector workforce</p>
-              <p className="text-[10px] font-black text-slate-600">
-                {stats.total > 0 ? (((stats.lw + stats.ue + stats.st) / stats.total) * 100).toFixed(1) : 0}% stranded
-              </p>
+            {/* Reconciliation strip — makes the de-duplication arithmetic visible so the
+                category counts and the stranded total can never look contradictory. */}
+            <div className="mt-4 pt-3 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold tabular-nums">
+                <span className="text-blue-600">{stats.lw.toLocaleString()} low wage</span>
+                <span className="text-slate-300">+</span>
+                <span className="text-amber-600">{stats.ue.toLocaleString()} underemployed</span>
+                <span className="text-slate-300">+</span>
+                <span className="text-emerald-600">{Math.round(stats.st).toLocaleString()} career stalled</span>
+                {stats.overlap > 0 && (
+                  <>
+                    <span className="text-slate-300">−</span>
+                    <span className="text-slate-500">{stats.overlap.toLocaleString()} in both low wage and underemployed</span>
+                  </>
+                )}
+                <span className="text-slate-300">=</span>
+                <span className="text-slate-800 font-black">{stats.stranded.toLocaleString()} stranded</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Each worker counted once</p>
+                <p className="text-[10px] font-black text-slate-600">
+                  {stats.total > 0 ? ((stats.stranded / stats.total) * 100).toFixed(1) : 0}% of sector workforce
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1686,7 +1815,7 @@ const App = () => {
                               <div className="p-4 bg-white rounded-2xl border border-slate-100">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Non-Stranded Rate</p>
                                 <p className="text-lg md:text-xl font-black text-blue-900">{((1 - occupationDiagnostics.strandedShare) * 100).toFixed(1)}%</p>
-                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay &amp; utilisation</p>
+                                <p className="text-[9px] text-slate-400 mt-1">share with adequate pay &amp; utilization</p>
                               </div>
                               <div className={`p-4 rounded-2xl border ${HOURS_VIABLE ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`}>
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Full-Time Share</p>
