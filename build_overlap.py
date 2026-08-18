@@ -71,6 +71,7 @@ from collections import defaultdict
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CSV = os.path.join(HERE, "src", "data", "cross_tabulated_data_cleaned_correct.csv")
 DEFAULT_OUT = os.path.join(HERE, "src", "data", "lw_ue_overlap.json")
+DEFAULT_CROSSTAB = os.path.join(HERE, "src", "data", "cross_tabulated_data.json")
 
 # Same normalisation build_demographics.py applies: the ACS file uses the full
 # BLS sector label and splits out "Rural", the crosstab JSON does neither.
@@ -94,6 +95,52 @@ def num(v):
         return 0.0
 
 
+def crosstab_convention(path):
+    """Is `underemployed` in the OEWS crosstab INCLUSIVE of low-wage workers?
+
+    This matters because the overlap rate is derived from the ACS file but
+    APPLIED to the crosstab. If the crosstab already reports underemployed as a
+    low-wage-exclusive residual, the overlap has been removed upstream and
+    subtracting it again understates the stranded population.
+
+    That is not hypothetical. The March 2026 vintage of this file used the
+    exclusive convention (its low_wage + underemployed summed exactly to its
+    stranded column, and to the report's ~452,000); the April vintage switched
+    to the inclusive convention. A future delivery could switch back.
+
+    Two schema-dependent signals, checked in order:
+      - a union column (`n_stranded_weighted`): exclusive iff low_wage +
+        underemployed equals it
+      - `estimated_stalled_both` (stalled AND low-wage AND underemployed): any
+        non-zero value is only possible if low-wage and underemployed overlap
+
+    Returns 'inclusive', 'exclusive', or 'unknown'.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
+    except (OSError, ValueError):
+        return "unknown"
+    if not rows:
+        return "unknown"
+    keys = set(rows[0].keys())
+
+    if {"n_low_wage_weighted", "n_underemployed_weighted", "n_stranded_weighted"} <= keys:
+        lw = sum(num(r.get("n_low_wage_weighted")) for r in rows)
+        ue = sum(num(r.get("n_underemployed_weighted")) for r in rows)
+        union = sum(num(r.get("n_stranded_weighted")) for r in rows)
+        if union <= 0:
+            return "unknown"
+        # Exclusive iff the two categories sum to the union with no slack.
+        return "exclusive" if abs((lw + ue) - union) / union < 1e-6 else "inclusive"
+
+    if "estimated_stalled_both" in keys:
+        both = sum(num(r.get("estimated_stalled_both")) for r in rows)
+        return "inclusive" if both > 0 else "exclusive"
+
+    return "unknown"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -101,7 +148,26 @@ def main():
                     help="ACS-weighted crosstab CSV (default: src/data/cross_tabulated_data_cleaned_correct.csv)")
     ap.add_argument("--out", default=DEFAULT_OUT,
                     help="output JSON path (default: src/data/lw_ue_overlap.json)")
+    ap.add_argument("--crosstab", default=DEFAULT_CROSSTAB,
+                    help="OEWS crosstab the rates will be applied to; checked for "
+                         "overlap convention (default: src/data/cross_tabulated_data.json)")
     args = ap.parse_args()
+
+    convention = crosstab_convention(args.crosstab)
+    if convention == "exclusive":
+        raise SystemExit(
+            f"ERROR: {args.crosstab} reports `underemployed` EXCLUSIVE of low-wage "
+            f"workers -- its categories are already de-duplicated upstream.\n"
+            f"Applying an overlap correction to it would subtract the same workers "
+            f"twice and understate the stranded population.\n"
+            f"The app's headline should read low_wage + underemployed + stalled_only "
+            f"directly for this vintage; remove the overlap term rather than running "
+            f"this script. See the docstring above."
+        )
+    if convention == "unknown":
+        print(f"WARNING: could not determine the overlap convention of {args.crosstab}.\n"
+              f"         Verify that its `underemployed` column INCLUDES workers who are\n"
+              f"         also low-wage before trusting the corrected headline.\n")
 
     # key -> [sum(lw + ue), sum(overlap)]
     occ = defaultdict(lambda: [0.0, 0.0])
